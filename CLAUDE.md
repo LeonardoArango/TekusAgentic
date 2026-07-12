@@ -6,6 +6,8 @@ Referencia completa de negocio: `docs/plan-producto-whatsapp-tekus.docx` (docume
 
 Referencia de librerías y mejores prácticas: `docs/investigacion-arquitectura.md` (investigación de estado del arte, 2026-07-12). Las decisiones de librerías concretas de este archivo (LangGraph, PyWa, OdooRPC, atlassian-python-api, reranker) vienen de ahí — consúltalo si necesitas la justificación completa o alternativas evaluadas.
 
+Decisiones de arquitectura registradas como ADR (más recientes que el plan de producto original, prevalecen sobre él en caso de conflicto): `docs/decisiones/`. Ver en particular `0001-canal-voz-fase2.md` — el plan de producto no menciona voz, pero es un compromiso de roadmap confirmado el 2026-07-12.
+
 ## Qué es este proyecto
 
 Primer producto de transformación digital de Tekus: un agente conversacional de WhatsApp orquestado por IA que atiende **soporte técnico** y **ventas** en el mismo hilo, respaldado por una plataforma web de gestión, configuración, dashboards y reportes. Es un proyecto interno de Innovación y Nuevos Negocios (equipo "skunkworks" separado de la operación core de Tekus).
@@ -41,6 +43,19 @@ El sistema no es un árbol de decisión ni un único prompt monolítico. Se impl
 3. **Agente Comercial** — RAG sobre catálogo/propuesta de valor + datos de cuenta en Odoo CRM; califica, informa, avanza oportunidad.
 4. **Agente de Políticas (Guardrails)** — decide cuándo el agente comercial puede intervenir en una conversación de soporte (reglas: cuenta activa, sin incidente crítico abierto, no en mora, propensión de compra > umbral) y cuándo escalar a humano. Este agente es el que **impide** que el bot venda de forma agresiva o inoportuna — cualquier cambio a sus reglas requiere aprobación explícita, no solo un ajuste de prompt silencioso.
 5. **Orquestador/Memoria** — mantiene el estado de la conversación y decide el siguiente mejor paso.
+
+Esta arquitectura (Router → Soporte/Comercial → Guardrails → Orquestador) es la del **canal WhatsApp (texto)**, que es todo lo que se construye en Fase 1. Ver sección "Canal de voz" más abajo para lo que cambia en Fase 2.
+
+## Canal de voz (Fase 2 — no construir todavía)
+
+Confirmado como compromiso de roadmap (ver `docs/decisiones/0001-canal-voz-fase2.md`), aunque el plan de producto original no lo menciona. Reglas para cuando se construya:
+
+- Es **llamadas telefónicas en tiempo real** (STT + LLM + TTS), no notas de voz de WhatsApp ni un asistente interno tipo Alexa.
+- Entra en **Fase 2**, junto con el Agente Comercial. **No cambia el alcance de Fase 1** (Fase 1 sigue siendo 100% WhatsApp texto).
+- Se implementa como **un grafo LangGraph separado y optimizado para latencia** — no el mismo grafo de texto con un adaptador de canal encima. El RAG híbrido con reranker (~200-400ms) está pensado para WhatsApp asíncrono, no para un turno de voz con expectativa de respuesta en 1-2 segundos.
+- Lo único que se comparte entre el grafo de texto y el de voz: los conectores a Odoo/Confluence y el **Agente de Políticas (Guardrails)** — las mismas reglas de venta/escalamiento aplican sin importar el canal.
+- Proveedor de telefonía/STT/TTS: sin decidir — se evalúa al arrancar el trabajo de voz en Fase 2, no antes.
+- Implicación para Fase 0/1: dejar espacio en `backend/agents/` para que en Fase 2 quepa un segundo grafo (p. ej. `agents/voz/`) sin que el Router/Orquestador de Fase 1 asuman "un solo canal" de forma rígida. Esto es solo una nota de diseño — no implica construir nada de voz ahora.
 
 ## Estrategia de RAG
 
@@ -107,4 +122,4 @@ Si el código existente no coincide con esta estructura, no la fuerces de golpe 
 
 ## Estado del proyecto
 
-Fase actual: **Fase 0 — Discovery** (validación de accesos a Odoo/Confluence/Meta Business Manager, definición de alcance del MVP). Ver roadmap completo en `docs/plan-producto-whatsapp-tekus.docx`, sección 8.
+Fase actual: **Fase 0 — Discovery** (validación de accesos a Odoo/Confluence/Meta Business Manager, definición de alcance del MVP). Ver roadmap completo en `docs/plan-producto-whatsapp-tekus.docx`, sección 8, con la adición de voz en Fase 2 registrada en `docs/decisiones/0001-canal-voz-fase2.md`.

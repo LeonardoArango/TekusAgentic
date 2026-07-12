@@ -1,0 +1,21 @@
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  padding: 1rem;
+  font-weight: 600;
+}
+
+.app-content {
+  flex: 1;
+  padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  .app-content {
+    padding: 2rem;
+  }
+}
