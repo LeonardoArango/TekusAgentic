@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from urllib.parse import urlsplit
 
 import odoorpc
 from odoorpc.error import RPCError
@@ -41,13 +42,18 @@ class OdooConnection:
 
     def __init__(self) -> None:
         url = os.environ["ODOO_URL"]
-        scheme, _, host_port = url.partition("://")
-        host, _, port = host_port.partition(":")
+        parsed = urlsplit(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError(
+                f"ODOO_URL inválido: {url!r} — debe incluir el esquema completo, ej. "
+                "'https://tekus.odoo.com' (no 'tekus.odoo.com' a secas ni con espacios/comillas "
+                "de más)."
+            )
 
         self._odoo = odoorpc.ODOO(
-            host,
-            protocol="jsonrpc+ssl" if scheme == "https" else "jsonrpc",
-            port=int(port) if port else (443 if scheme == "https" else 8069),
+            parsed.hostname,
+            protocol="jsonrpc+ssl" if parsed.scheme == "https" else "jsonrpc",
+            port=parsed.port or (443 if parsed.scheme == "https" else 8069),
         )
         self._odoo.login(
             os.environ["ODOO_DB"],
