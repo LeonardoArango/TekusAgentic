@@ -19,6 +19,7 @@ dependencies = [
     "redis>=5.1",
     "opentelemetry-sdk>=1.27",
     "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "pyjwt[crypto]>=2.9",
 ]
 
 [project.optional-dependencies]
