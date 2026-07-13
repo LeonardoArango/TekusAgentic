@@ -4,7 +4,10 @@ WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# docker-compose es para desarrollo local: usar la configuración "development"
+# (environment.development.ts) en vez de "production" (environment.ts, vacío
+# hasta que exista despliegue real).
+RUN npx ng build --configuration=development
 
 FROM node:22-slim
 

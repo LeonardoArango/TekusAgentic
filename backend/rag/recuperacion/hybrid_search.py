@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.rag.indexacion.embeddings import EmbeddingsProvider
+from rag.indexacion.embeddings import EmbeddingsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,15 @@ _RRF_K = 60  # constante estándar de RRF (Cormack et al.)
 def _bm25_candidates(session: Session, query: str, top_k: int) -> list[tuple[str, int]]:
     """BM25-ish vía full-text search nativo de Postgres (ts_rank_cd)."""
     rows = session.execute(
-        text(
-            """
-            SELECT id, ts_rank_cd(to_tsvector('spanish', text), plainto_tsquery('spanish', :query)) AS rank
+        text("""
+            SELECT id,
+                   ts_rank_cd(to_tsvector('spanish', text), plainto_tsquery('spanish', :query))
+                       AS rank
             FROM confluence_chunks
             WHERE to_tsvector('spanish', text) @@ plainto_tsquery('spanish', :query)
             ORDER BY rank DESC
             LIMIT :top_k
-            """
-        ),
+            """),
         {"query": query, "top_k": top_k},
     ).all()
     return [(str(row.id), i) for i, row in enumerate(rows)]
@@ -48,22 +48,18 @@ def _vector_candidates(
     session: Session, query_vector: list[float], top_k: int
 ) -> list[tuple[str, int]]:
     rows = session.execute(
-        text(
-            """
+        text("""
             SELECT id
             FROM confluence_chunks
             ORDER BY embedding <=> (:query_vector)::vector
             LIMIT :top_k
-            """
-        ),
+            """),
         {"query_vector": str(query_vector), "top_k": top_k},
     ).all()
     return [(str(row.id), i) for i, row in enumerate(rows)]
 
 
-def _reciprocal_rank_fusion(
-    ranked_lists: list[list[tuple[str, int]]], top_k: int
-) -> list[str]:
+def _reciprocal_rank_fusion(ranked_lists: list[list[tuple[str, int]]], top_k: int) -> list[str]:
     scores: dict[str, float] = {}
     for ranked in ranked_lists:
         for chunk_id, rank in ranked:
@@ -102,13 +98,11 @@ def hybrid_search(session: Session, query: str, embeddings: EmbeddingsProvider) 
         return []
 
     rows = session.execute(
-        text(
-            """
+        text("""
             SELECT id, page_title, page_url, space_key, text
             FROM confluence_chunks
             WHERE id = ANY(:ids)
-            """
-        ),
+            """),
         {"ids": fused_ids},
     ).all()
     by_id = {str(row.id): row for row in rows}

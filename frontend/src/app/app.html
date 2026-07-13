@@ -1,6 +1,15 @@
 <div class="app-shell">
   <header class="app-header">
     <span class="app-title">{{ title() }}</span>
+
+    <div class="app-auth">
+      @if (auth.isAuthenticated()) {
+        <span class="app-auth-name">{{ auth.currentAccount()?.username }}</span>
+        <button type="button" (click)="auth.logout()">Cerrar sesión</button>
+      } @else {
+        <button type="button" (click)="auth.login()">Iniciar sesión con Microsoft</button>
+      }
+    </div>
   </header>
 
   <main class="app-content">
