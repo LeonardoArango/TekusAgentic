@@ -17,16 +17,21 @@ EXCLUDED_PAGES: dict[str, dict[str, str]] = {
         # rag/ingesta/confluence_ingest.py como salvaguarda adicional.
     },
     "AL": {
-        # Artículo de ayuda de otra empresa (Driversnote) copiado verbatim,
-        # sin relación con Tekus — no es documentación de soporte válida.
+        # "🪫Configuración de consumo y optimización de batería en aplicaciones
+        # Android": artículo de ayuda de otra empresa (Driversnote) copiado
+        # verbatim, sin relación con Tekus — no es documentación de soporte
+        # válida. OJO: no confundir con la página 2091220993 ("...player
+        # Android"), que sí es contenido legítimo de Tekus y debe indexarse.
+        "2036334593": "Contenido plagiado de Driversnote, sin relación con Tekus",
     },
 }
 
 # Salvaguarda por título (además de por ID) para espacios donde el ID exacto
 # de la página con credenciales/contenido no válido no se ha confirmado aún.
+# Usar solo cuando el título es lo bastante específico para no atrapar
+# páginas legítimas por coincidencia parcial (ver caso AL arriba).
 EXCLUDED_TITLE_SUBSTRINGS: dict[str, list[str]] = {
     "kiosk": ["Loggro", "Kokoriko"],
-    "AL": ["Configuración de consumo y optimización de batería"],
 }
 
 
