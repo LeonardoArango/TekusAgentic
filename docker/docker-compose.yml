@@ -27,8 +27,29 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.backend
     restart: unless-stopped
-    env_file:
-      - ../.env
+    # No env_file: las variables se toman del entorno del proceso que lanza
+    # `docker compose`. En prod eso significa `doppler run -- docker compose
+    # up`; en dev local sin Doppler, usar `docker compose --env-file ../.env up`.
+    environment:
+      - META_WA_TOKEN
+      - META_WA_PHONE_NUMBER_ID
+      - META_WA_BUSINESS_ACCOUNT_ID
+      - META_WA_VERIFY_TOKEN
+      - META_WA_APP_SECRET
+      - ODOO_URL
+      - ODOO_DB
+      - ODOO_USERNAME
+      - ODOO_PASSWORD
+      - CONFLUENCE_URL
+      - CONFLUENCE_USERNAME
+      - CONFLUENCE_API_TOKEN
+      - ENTRA_TENANT_ID
+      - ENTRA_CLIENT_ID
+      - ENTRA_CLIENT_SECRET
+      - DATABASE_URL
+      - REDIS_URL
+      - EMBEDDINGS_SERVICE_URL
+      - RERANKER_SERVICE_URL
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
