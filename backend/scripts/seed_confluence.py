@@ -26,7 +26,7 @@ from rag.indexacion.embeddings import (  # noqa: E402
     HttpEmbeddingsProvider,
     LocalDevFallbackEmbeddingsProvider,
 )
-from rag.indexacion.indexer import index_pages  # noqa: E402
+from rag.indexacion.indexer import index_pages, reconciliar_espacio  # noqa: E402
 from rag.ingesta.exclusions import is_excluded  # noqa: E402
 
 SEED_DIR = Path(__file__).resolve().parents[1] / "rag" / "_seed_data"
@@ -60,18 +60,34 @@ def main() -> None:
         )
         embeddings = LocalDevFallbackEmbeddingsProvider()
 
-    all_pages: list[ConfluencePage] = []
+    pages_by_space: dict[str, list[ConfluencePage]] = {}
     for json_path in sorted(SEED_DIR.glob("*.json")):
-        all_pages.extend(_load_pages(json_path))
+        for page in _load_pages(json_path):
+            pages_by_space.setdefault(page.space_key, []).append(page)
 
-    if not all_pages:
+    if not pages_by_space:
         print(f"No se encontraron JSON de seed en {SEED_DIR}")
         return
 
     with Session(engine) as session:
-        total_chunks = index_pages(session, all_pages, embeddings)
+        nuevas = actualizadas = sin_cambios = eliminadas = chunks_escritos = 0
+        for space_key, pages in pages_by_space.items():
+            # Cada JSON de seed es un barrido COMPLETO del espacio (no un
+            # fetch incremental por fecha) — por eso es válido reconciliar
+            # eliminaciones aquí, comparando contra el set de page_ids visto.
+            resumen = index_pages(session, pages, embeddings)
+            eliminadas_espacio = reconciliar_espacio(session, space_key, {p.page_id for p in pages})
+            nuevas += resumen.nuevas
+            actualizadas += resumen.actualizadas
+            sin_cambios += resumen.sin_cambios
+            eliminadas += eliminadas_espacio
+            chunks_escritos += resumen.chunks_escritos
 
-    print(f"\nListo: {len(all_pages)} páginas -> {total_chunks} chunks indexados.")
+    print(
+        f"\nListo: {nuevas} páginas nuevas, {actualizadas} actualizadas, "
+        f"{sin_cambios} sin cambios (saltadas, cero llamadas a embeddings), "
+        f"{eliminadas} eliminadas/reconciliadas -> {chunks_escritos} chunks escritos."
+    )
 
 
 if __name__ == "__main__":
