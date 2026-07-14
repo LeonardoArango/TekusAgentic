@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from backend.connectors.confluence.client import ConfluencePage
-from backend.models.rag import ConfluenceChunk
-from backend.rag.indexacion.chunking import chunk_markdown
-from backend.rag.indexacion.embeddings import EmbeddingsProvider
+from connectors.confluence.client import ConfluencePage
+from models.rag import ConfluenceChunk
+from rag.indexacion.chunking import chunk_markdown
+from rag.indexacion.embeddings import EmbeddingsProvider
 
 
 def index_pages(

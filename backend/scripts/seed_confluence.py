@@ -18,16 +18,16 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.connectors.confluence.client import ConfluencePage  # noqa: E402
-from backend.models.rag import Base  # noqa: E402
-from backend.rag.indexacion.embeddings import (  # noqa: E402
+from connectors.confluence.client import ConfluencePage  # noqa: E402
+from models.rag import Base  # noqa: E402
+from rag.indexacion.embeddings import (  # noqa: E402
     HttpEmbeddingsProvider,
     LocalDevFallbackEmbeddingsProvider,
 )
-from backend.rag.indexacion.indexer import index_pages  # noqa: E402
-from backend.rag.ingesta.exclusions import is_excluded  # noqa: E402
+from rag.indexacion.indexer import index_pages  # noqa: E402
+from rag.ingesta.exclusions import is_excluded  # noqa: E402
 
 SEED_DIR = Path(__file__).resolve().parents[1] / "rag" / "_seed_data"
 

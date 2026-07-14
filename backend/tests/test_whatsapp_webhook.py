@@ -24,9 +24,7 @@ def _env(monkeypatch):
 @pytest.fixture(autouse=True)
 def _fake_redis(monkeypatch):
     fake = fakeredis.FakeRedis()
-    monkeypatch.setattr(
-        "api.webhooks.whatsapp.redis.Redis.from_url", lambda *_a, **_k: fake
-    )
+    monkeypatch.setattr("api.webhooks.whatsapp.redis.Redis.from_url", lambda *_a, **_k: fake)
     return fake
 
 

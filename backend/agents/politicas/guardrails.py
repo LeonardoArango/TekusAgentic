@@ -15,10 +15,10 @@ LangGraph, no como un `if` escondido en el código de negocio de otro agente
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class DecisionPolitica(str, Enum):
+class DecisionPolitica(StrEnum):
     """Resultado posible de una evaluación del Agente de Políticas."""
 
     PERMITIR_COMERCIAL = "permitir_comercial"
