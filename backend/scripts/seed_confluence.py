@@ -46,7 +46,7 @@ def _load_pages(json_path: Path) -> list[ConfluencePage]:
 
 
 def main() -> None:
-    database_url = os.environ["DATABASE_URL"].replace("+asyncpg", "")
+    database_url = os.environ["DATABASE_URL"].replace("+asyncpg", "+psycopg")
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
 

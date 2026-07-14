@@ -1,0 +1,42 @@
+<div class="rag-qa">
+  <h2>Preguntar a la base de conocimiento</h2>
+
+  <form class="rag-qa-form" (ngSubmit)="preguntar()">
+    <input
+      type="text"
+      name="pregunta"
+      placeholder="¿Cómo configuro un kiosco?"
+      [(ngModel)]="pregunta"
+      [disabled]="cargando()"
+    />
+    <button type="submit" [disabled]="cargando()">
+      {{ cargando() ? 'Buscando…' : 'Preguntar' }}
+    </button>
+  </form>
+
+  @if (error()) {
+    <p class="rag-qa-error">{{ error() }}</p>
+  }
+
+  @if (resultado(); as r) {
+    @if (r.puede_resolver) {
+      <div class="rag-qa-respuesta">
+        <p>{{ r.respuesta }}</p>
+        @if (r.fuentes.length) {
+          <ul class="rag-qa-fuentes">
+            @for (fuente of r.fuentes; track fuente.page_url) {
+              <li>
+                <a [href]="fuente.page_url" target="_blank" rel="noopener">{{ fuente.page_title }}</a>
+                <span class="rag-qa-espacio">({{ fuente.space_key }})</span>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    } @else {
+      <p class="rag-qa-sin-resolver">
+        No encontré suficiente información en la base de conocimiento para responder con confianza.
+      </p>
+    }
+  }
+</div>

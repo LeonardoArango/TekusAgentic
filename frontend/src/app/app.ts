@@ -1,10 +1,11 @@
 import { Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth/auth.service';
+import { RagQa } from './conversaciones/rag-qa/rag-qa';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RagQa],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

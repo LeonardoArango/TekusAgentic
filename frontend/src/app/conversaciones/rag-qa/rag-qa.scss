@@ -1,0 +1,33 @@
+.rag-qa {
+  max-width: 640px;
+}
+
+.rag-qa-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+
+  input {
+    flex: 1;
+    padding: 0.5rem;
+  }
+}
+
+.rag-qa-error {
+  color: #b00020;
+}
+
+.rag-qa-sin-resolver {
+  color: #666;
+  font-style: italic;
+}
+
+.rag-qa-fuentes {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+}
+
+.rag-qa-espacio {
+  color: #888;
+}

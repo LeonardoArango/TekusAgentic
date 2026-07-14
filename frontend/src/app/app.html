@@ -13,6 +13,9 @@
   </header>
 
   <main class="app-content">
+    @if (auth.isAuthenticated()) {
+      <app-rag-qa />
+    }
     <router-outlet />
   </main>
 </div>
