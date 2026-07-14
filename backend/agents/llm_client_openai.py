@@ -217,6 +217,149 @@ def conversar_rag(mensajes: list[dict], fragmentos: list[str]) -> dict:
     return json.loads(tool_call.function.arguments)
 
 
+def _chat_msgs(mensajes: list[dict], system: str, extra_system: str | None = None) -> list[dict]:
+    out = [{"role": "system", "content": system}]
+    for m in mensajes:
+        rol = "assistant" if m.get("rol") == "assistant" else "user"
+        out.append({"role": rol, "content": m.get("texto", "")})
+    if extra_system:
+        out.append({"role": "system", "content": extra_system})
+    return out
+
+
+def _call_tool(
+    mensajes: list[dict], system: str, tool: dict, extra_system: str | None = None
+) -> dict:
+    response = _get_client().chat.completions.create(
+        model=_model(),
+        messages=_chat_msgs(mensajes, system, extra_system),
+        tools=[tool],
+        tool_choice={"type": "function", "function": {"name": tool["function"]["name"]}},
+    )
+    return json.loads(response.choices[0].message.tool_calls[0].function.arguments)
+
+
+# --- Nodos acotados del grafo de soporte (ver ADR 0006) ---------------------
+
+_EXTRAER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "extraer_estado",
+        "description": "Extrae del historial los datos del cliente y el problema, ya presentes.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "nombre": {
+                    "type": "string",
+                    "description": "Nombre del cliente si lo dijo; vacío si no.",
+                },
+                "correo": {"type": "string", "description": "Correo si lo dio; vacío si no."},
+                "cuenta": {
+                    "type": "string",
+                    "description": "Empresa/cuenta si la mencionó; vacío si no.",
+                },
+                "resumen_problema": {
+                    "type": "string",
+                    "description": (
+                        "Resumen del problema en tercera persona / neutro, para completar la "
+                        "frase 'entiendo que ...'. Ej: 'tu pantalla no muestra imagen' (NO en "
+                        "primera persona como 'tengo un problema')."
+                    ),
+                },
+                "intencion": {"type": "string", "enum": ["soporte", "venta", "mixto"]},
+                "pide_humano": {
+                    "type": "boolean",
+                    "description": "true si el cliente pidió explícitamente hablar con una persona",
+                },
+            },
+            "required": [
+                "nombre",
+                "correo",
+                "cuenta",
+                "resumen_problema",
+                "intencion",
+                "pide_humano",
+            ],
+        },
+    },
+}
+
+_DECIDIR_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "decidir_soporte",
+        "description": "Decide si aclarar, resolver o escalar, usando SOLO el contexto entregado.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "accion": {
+                    "type": "string",
+                    "enum": ["aclarar", "resolver", "escalar"],
+                    "description": (
+                        "'aclarar' si falta un dato del problema para resolver. 'resolver' si "
+                        "el contexto alcanza. 'escalar' si el contexto no tiene la respuesta o "
+                        "ya no converge."
+                    ),
+                },
+                "pregunta": {
+                    "type": "string",
+                    "description": (
+                        "Si accion='aclarar': UNA pregunta concreta sobre el problema. No "
+                        "repitas algo ya preguntado ni pasos que el cliente ya dijo haber "
+                        "hecho. Sin saludo (el saludo se agrega aparte)."
+                    ),
+                },
+                "respuesta": {
+                    "type": "string",
+                    "description": (
+                        "Si accion='resolver': solución paso a paso, saltando pasos que el "
+                        "cliente ya intentó. Sin saludo. Sin mencionar tickets internos."
+                    ),
+                },
+                "fuentes_usadas": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Si accion='resolver': índices de los fragmentos usados.",
+                },
+            },
+            "required": ["accion"],
+        },
+    },
+}
+
+
+def extraer_estado_conversacion(mensajes: list[dict]) -> dict:
+    """Nodo de comprensión: qué datos y qué problema hay ya en la conversación."""
+    system = (
+        "Eres un extractor. Lee la conversación entre un cliente y el soporte de Tekus y "
+        "extrae SOLO lo que el cliente haya dicho explícitamente. No inventes. Si un dato no "
+        "aparece, déjalo vacío."
+    )
+    return _call_tool(mensajes, system, _EXTRAER_TOOL)
+
+
+def decidir_soporte(mensajes: list[dict], fragmentos: list[str]) -> dict:
+    """Nodo de decisión: aclarar / resolver / escalar, con el contexto recuperado."""
+    contexto = "\n\n".join(f"[{i}] {frag}" for i, frag in enumerate(fragmentos))
+    system = (
+        "Eres el asistente de soporte de Tekus. Usa EXCLUSIVAMENTE el contexto entregado "
+        "(documentación de Confluence y conocimiento de tickets internos). Decide la acción "
+        "del turno:\n"
+        "- Por defecto intenta AYUDAR: si el contexto tiene algo útil, 'resolver'; si falta "
+        "un dato del problema para afinar la solución, 'aclarar'.\n"
+        "- 'escalar' SOLO si el contexto realmente no tiene NADA útil para este problema, o "
+        "si ya intentaste ayudar en turnos anteriores y no se resolvió. NUNCA escales en el "
+        "primer intento si hay contexto aprovechable.\n"
+        "No repitas preguntas ya hechas ni sugieras pasos que el cliente ya dijo haber hecho. "
+        "Nunca menciones números de ticket internos: úsalos para responder pero no los "
+        "expongas; solo la documentación de Confluence es citable. Español, tono de tú, sin "
+        "emojis."
+    )
+    return _call_tool(
+        mensajes, system, _DECIDIR_TOOL, extra_system=f"Contexto recuperado:\n{contexto}"
+    )
+
+
 def responder_pregunta_rag(pregunta: str, fragmentos: list[str]) -> dict:
     """Responde `pregunta` usando únicamente `fragmentos` como contexto.
 

@@ -53,9 +53,33 @@ fuentes_usadas: [int]        # si accion == responder
 motivo_escalamiento: str     # si accion == escalar
 ```
 
+## Implementación (actualización 2026-07-14)
+
+Un primer intento con **una sola llamada al LLM** haciendo todo (saludar,
+confirmar, aclarar, resolver+citar, recolectar datos, escalar) resultó poco
+confiable — probado con gpt-4o-mini y gpt-4o: el saludo, la cita de fuentes y
+la recolección de datos no ocurrían de forma consistente. Se rearquitectó como
+**máquina de estados LangGraph** (`backend/agents/soporte_web/grafo.py`), que
+es además lo que manda `CLAUDE.md`:
+
+- El LLM solo hace lo que hace bien: **entender** (`extraer_estado_conversacion`)
+  y **redactar/decidir** (`decidir_soporte`). Dos llamadas acotadas.
+- Lo estructural es **determinístico**: el saludo del primer turno (plantilla
+  con nombre + confirmación del problema), el gating de "no escalar sin
+  nombre+correo", y la creación del ticket. Así no dependen de que el modelo
+  "haga caso".
+- Flujo: `recuperar → analizar → decidir → (aclarar | resolver | escalar)`.
+- **Creación de ticket**: al escalar con nombre+correo, crea el ticket en una
+  instancia de Odoo de **PRUEBAS** (credenciales `ODOO_*_TEST`, separadas de la
+  principal de lectura), gated por `ODOO_TICKET_WRITE_ENABLED`. Verificado
+  end-to-end (tickets creados en la instancia de test).
+- **Fuentes**: filtrado server-side — solo se muestran documentos públicos de
+  Confluence; los tickets internos alimentan la respuesta pero nunca se citan.
+
 ## Consecuencias / reconciliación
 
-- **Consola web (`rag_qa.py`)**: se implementa este flujo de 3 acciones + etiqueta de intención en este mismo cambio (superficie activa hoy).
+- **Consola web (`rag_qa.py`)**: implementa este flujo vía el grafo de
+  `agents/soporte_web/`.
 - **WhatsApp (`agents/soporte/grafo.py`)**: hoy solo tiene resolver/ticket. Debe adoptar el mismo contrato (3 acciones + router + repreguntas de detalle). Se deja como **trabajo de reconciliación pendiente**, coordinando con quien mantiene ese grafo, para no reescribir en paralelo. El objetivo final es que ambas superficies llamen a la misma lógica de decisión.
 - Los dos proveedores de LLM (Anthropic en WhatsApp, OpenAI en web) siguen coexistiendo por ahora (ver `0005`); unificar proveedor es una decisión aparte, no la fuerza este ADR.
 - El Orquestador/Memoria de `CLAUDE.md` sigue siendo el dueño del estado entre turnos; hoy el historial viaja en cada request (sin estado en servidor), suficiente para Fase 1.

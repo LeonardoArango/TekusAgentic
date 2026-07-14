@@ -40,8 +40,21 @@ class OdooConnection:
     uno declare explícitamente qué modelos toca).
     """
 
-    def __init__(self) -> None:
-        url = os.environ["ODOO_URL"]
+    def __init__(
+        self,
+        url: str | None = None,
+        db: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+    ) -> None:
+        # Por defecto usa las env vars ODOO_* (instancia principal); se pueden
+        # pasar credenciales explícitas para apuntar a otra instancia (p. ej.
+        # la de pruebas ODOO_*_TEST para escribir tickets).
+        url = url or os.environ["ODOO_URL"]
+        db = db or os.environ["ODOO_DB"]
+        username = username or os.environ["ODOO_USERNAME"]
+        password = password or os.environ["ODOO_PASSWORD"]
+
         parsed = urlsplit(url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise ValueError(
@@ -55,11 +68,7 @@ class OdooConnection:
             protocol="jsonrpc+ssl" if parsed.scheme == "https" else "jsonrpc",
             port=parsed.port or (443 if parsed.scheme == "https" else 8069),
         )
-        self._odoo.login(
-            os.environ["ODOO_DB"],
-            os.environ["ODOO_USERNAME"],
-            os.environ["ODOO_PASSWORD"],
-        )
+        self._odoo.login(db, username, password)
         self._consecutive_failures = 0
 
     @property

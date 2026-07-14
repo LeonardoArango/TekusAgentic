@@ -14,7 +14,8 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from agents.llm_client_openai import conversar_rag, responder_pregunta_rag
+from agents.llm_client_openai import responder_pregunta_rag
+from agents.soporte_web.grafo import construir_grafo, fuentes_publicas
 from api.platform.auth import UsuarioAutenticado, get_current_user
 from rag.indexacion.provider_factory import get_embeddings_provider
 from rag.recuperacion.hybrid_search import hybrid_search
@@ -22,11 +23,6 @@ from rag.recuperacion.hybrid_search import hybrid_search
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/platform/rag", tags=["platform", "rag"])
-
-# Fuentes internas que NUNCA se muestran al usuario (solo alimentan la
-# respuesta). Los tickets de Odoo son conocimiento interno; solo se citan
-# documentos públicos de Confluence. Ver feedback de Leonardo (2026-07-14).
-_SPACES_INTERNOS = {"ODOO_HELPDESK"}
 
 _engine = None
 _helpdesk = None
@@ -40,29 +36,29 @@ def _get_engine():
 
 
 def _ticket_write_enabled() -> bool:
-    """La creación real de tickets en Odoo está apagada por defecto hasta que
-    se configuren credenciales de una instancia de PRUEBAS (no producción).
-    Encender con ODOO_TICKET_WRITE_ENABLED=1."""
+    """La creación real de tickets en Odoo está apagada por defecto. Se
+    enciende con ODOO_TICKET_WRITE_ENABLED=1 apuntando a la instancia de
+    PRUEBAS (credenciales ODOO_*_TEST en Doppler)."""
     return os.environ.get("ODOO_TICKET_WRITE_ENABLED", "").lower() in ("1", "true", "yes")
 
 
 def _get_helpdesk():
-    """Cliente de Odoo Helpdesk (perezoso). Solo se instancia si la escritura
-    está habilitada — instanciarlo hace login a Odoo."""
+    """Cliente de Odoo Helpdesk contra la instancia de PRUEBAS (credenciales
+    ODOO_*_TEST), perezoso — instanciarlo hace login a Odoo."""
     global _helpdesk
     if _helpdesk is None:
         from connectors.odoo_common import OdooConnection
         from connectors.odoo_helpdesk.client import OdooHelpdeskClient
 
-        _helpdesk = OdooHelpdeskClient(OdooConnection())
+        _helpdesk = OdooHelpdeskClient(
+            OdooConnection(
+                url=os.environ["ODOO_URL_TEST"],
+                db=os.environ["ODOO_DB_TEST"],
+                username=os.environ["ODOO_USERNAME_TEST"],
+                password=os.environ["ODOO_API_KEY_TEST"],
+            )
+        )
     return _helpdesk
-
-
-def _get_engine():
-    global _engine
-    if _engine is None:
-        _engine = create_engine(os.environ["DATABASE_URL"].replace("+asyncpg", "+psycopg"))
-    return _engine
 
 
 class PreguntaRequest(BaseModel):
@@ -143,10 +139,22 @@ class ChatResponse(BaseModel):
     ticket_ref: str | None = None  # nº del ticket recién creado para ESTE cliente (si aplica)
 
 
-def _query_de_conversacion(mensajes: list[MensajeChat]) -> str:
-    """Construye la query de recuperación con los turnos del usuario (los que
-    aportan el problema real), no las repreguntas del agente."""
-    return " ".join(m.texto for m in mensajes if m.rol == "user").strip()
+def _crear_ticket(nombre: str, correo: str, resumen: str) -> str | None:
+    """CreadorTicket para el grafo. Respeta el gate de escritura a Odoo."""
+    if not _ticket_write_enabled():
+        logger.info("Escalamiento (escritura de ticket deshabilitada): resumen=%s", resumen[:80])
+        return None
+    try:
+        ticket = _get_helpdesk().crear_ticket(
+            asunto=resumen[:120],
+            descripcion=resumen,
+            nombre_cliente=nombre,
+            correo_cliente=correo,
+        )
+        return ticket.referencia
+    except Exception:
+        logger.exception("No se pudo crear el ticket en Odoo al escalar")
+        return None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -154,95 +162,35 @@ def chat(
     body: ChatRequest,
     usuario: UsuarioAutenticado = Depends(get_current_user),  # noqa: B008
 ) -> ChatResponse:
-    """Turno de conversación: recupera contexto con todo lo que el cliente ha
-    dicho hasta ahora y deja que el agente decida repreguntar o resolver.
+    """Un turno del flujo conversacional de soporte (grafo LangGraph, ADR 0006).
 
     Sin estado en el servidor: el historial completo viaja en cada request
-    (lo mantiene el frontend) — simple y suficiente para esta fase.
+    (lo mantiene el frontend). El grafo decide aclarar/resolver/escalar; el
+    saludo, el gating de datos y la creación de ticket son determinísticos.
     """
-    query = _query_de_conversacion(body.mensajes)
-    if not query:
+    mensajes = [m.model_dump() for m in body.mensajes]
+    if not any(m["rol"] == "user" for m in mensajes):
         return ChatResponse(tipo="pregunta", texto="¿En qué te puedo ayudar?", fuentes=[])
 
+    es_primer_turno = not any(m["rol"] == "assistant" for m in mensajes)
     embeddings = get_embeddings_provider()
+
     with Session(_get_engine()) as session:
-        contexto = hybrid_search(session, query, embeddings)
 
-    decision = conversar_rag(
-        mensajes=[m.model_dump() for m in body.mensajes],
-        fragmentos=[c["text"] for c in contexto],
-    )
-    intencion = decision.get("intencion", "soporte")
-    accion = decision.get("accion", "responder")
+        def buscar(query: str) -> list[dict]:
+            return hybrid_search(session, query, embeddings)
 
-    if accion == "preguntar":
-        return ChatResponse(
-            tipo="pregunta",
-            texto=decision.get("pregunta_aclaratoria", ""),
-            fuentes=[],
-            intencion=intencion,
-        )
+        grafo = construir_grafo(buscar, _crear_ticket)
+        estado = grafo.invoke({"mensajes": mensajes, "es_primer_turno": es_primer_turno})
 
-    if accion == "escalar":
-        texto = decision.get("respuesta") or (
-            "No encontré una respuesta certera para esto. Lo escalo a un agente humano "
-            "de Tekus para que te ayude."
-        )
-        ticket_ref = _crear_ticket_si_procede(decision)
-        if ticket_ref:
-            texto = f"{texto} Tu ticket es el #{ticket_ref}."
-        return ChatResponse(
-            tipo="escalar", texto=texto, fuentes=[], intencion=intencion, ticket_ref=ticket_ref
-        )
-
+    fuentes = [
+        FuenteResponse(page_title=c["page_title"], page_url=c["page_url"], space_key=c["space_key"])
+        for c in fuentes_publicas(estado)
+    ]
     return ChatResponse(
-        tipo="respuesta",
-        texto=decision.get("respuesta", ""),
-        fuentes=_fuentes_publicas(decision, contexto),
-        intencion=intencion,
+        tipo=estado.get("tipo", "respuesta"),
+        texto=estado.get("texto", ""),
+        fuentes=fuentes,
+        intencion=estado.get("intencion", "soporte"),
+        ticket_ref=estado.get("ticket_ref"),
     )
-
-
-def _fuentes_publicas(decision: dict, contexto: list[dict]) -> list[FuenteResponse]:
-    """Solo documentos públicos de Confluence — nunca tickets internos de Odoo."""
-    fuentes = []
-    for i in decision.get("fuentes_usadas", []):
-        if not (0 <= i < len(contexto)):
-            continue
-        if contexto[i]["space_key"] in _SPACES_INTERNOS:
-            continue
-        fuentes.append(
-            FuenteResponse(
-                page_title=contexto[i]["page_title"],
-                page_url=contexto[i]["page_url"],
-                space_key=contexto[i]["space_key"],
-            )
-        )
-    return fuentes
-
-
-def _crear_ticket_si_procede(decision: dict) -> str | None:
-    """Crea el ticket en Odoo con los datos reunidos, si la escritura está
-    habilitada. Devuelve la referencia del ticket o None."""
-    datos = decision.get("datos_cliente") or {}
-    resumen = decision.get("resumen_problema") or "Consulta de soporte por WhatsApp/consola"
-
-    if not _ticket_write_enabled():
-        logger.info(
-            "Escalamiento (escritura de ticket deshabilitada): datos=%s resumen=%s",
-            {k: bool(v) for k, v in datos.items()},
-            resumen[:80],
-        )
-        return None
-
-    try:
-        ticket = _get_helpdesk().crear_ticket(
-            asunto=resumen[:120],
-            descripcion=resumen,
-            nombre_cliente=datos.get("nombre"),
-            correo_cliente=datos.get("correo"),
-        )
-        return ticket.referencia
-    except Exception:
-        logger.exception("No se pudo crear el ticket en Odoo al escalar")
-        return None
