@@ -1,1 +1,36 @@
-/* You can add global styles to this file, and also import other style files */
+/* Poppins — tipografía de marca Tekus (el DS incluye los .ttf; para dev
+   usamos Google Fonts. Self-hostear con los ttf del DS antes de prod). */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+@import './styles/tekus-tokens.css';
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--font-sans);
+  font-weight: var(--weight-light);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--fg-1);
+  background: var(--bg-subtle);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-snug);
+  color: var(--fg-1);
+  margin: 0;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+::selection { background: var(--tekus-teal); color: var(--tekus-ink-deep); }

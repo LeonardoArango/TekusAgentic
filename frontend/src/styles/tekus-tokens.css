@@ -1,0 +1,94 @@
+/* =============================================================
+   TEKUS DESIGN TOKENS — portado del Tekus Design System (Marketing)
+   Fuente: colors_and_type.css del proyecto Claude Design "Tekus Design
+   System (Marketing)" (feba936e). NO editar valores a mano — si el DS
+   cambia, re-sincronizar desde ahí. Ver docs/decisiones si se formaliza.
+   ============================================================= */
+
+:root {
+  /* ---------- BRAND ---------- */
+  --tekus-teal:        #6AD0BC;
+  --tekus-teal-deep:   #75BDA7;
+  --tekus-teal-soft:   #A7E1D2;
+  --tekus-teal-pale:   #E1F4EF;
+  --tekus-ink:         #373545;
+  --tekus-ink-deep:    #1F1E29;
+  --tekus-indigo:      #1B0A63;
+  --tekus-red:         #E03A3C;
+  --tekus-blue:        #2683C6;
+
+  /* ---------- SEMANTIC (light) ---------- */
+  --bg:                #FFFFFF;
+  --bg-subtle:         #F6F9FB;
+  --bg-muted:          #ECF1F4;
+  --surface:           #FFFFFF;
+
+  --fg-1:              #1F1E29;
+  --fg-2:              #373545;
+  --fg-3:              #5E5C6E;
+  --fg-4:              #9A98A8;
+  --fg-inverse:        #FFFFFF;
+
+  --border:            #E4E8EE;
+  --border-strong:     #CEDBE6;
+  --divider:           #EEF1F4;
+
+  --accent:            var(--tekus-teal);
+  --accent-hover:      var(--tekus-teal-deep);
+  --accent-active:     #5FC4B0;
+  --accent-fg:         #0A3B33;
+  --accent-soft:       var(--tekus-teal-pale);
+
+  --link:              var(--tekus-blue);
+  --success:           #3BB273;
+  --warning:           #E7A83A;
+  --danger:            var(--tekus-red);
+  --info:              var(--tekus-blue);
+
+  /* ---------- TYPE ---------- */
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-snug: -0.01em;
+  --tracking-wider: 0.08em;
+  --leading-tight: 1.1;
+  --leading-normal: 1.45;
+
+  --text-xs: 12px;  --text-sm: 14px;  --text-base: 16px; --text-md: 18px;
+  --text-lg: 20px;  --text-xl: 24px;  --text-2xl: 30px;  --text-3xl: 38px;
+  --text-4xl: 48px;
+
+  /* ---------- SPACING ---------- */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px;
+  --space-9: 48px; --space-10: 64px;
+
+  /* ---------- RADII ---------- */
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+  --radius-xl: 20px; --radius-2xl: 28px; --radius-pill: 999px;
+
+  /* ---------- SHADOWS ---------- */
+  --shadow-sm: 0 1px 3px 0 rgba(31,30,41,0.08), 0 1px 2px -1px rgba(31,30,41,0.06);
+  --shadow-md: 0 4px 12px -2px rgba(31,30,41,0.08), 0 2px 4px -2px rgba(31,30,41,0.06);
+  --shadow-lg: 0 12px 28px -8px rgba(31,30,41,0.14), 0 4px 10px -4px rgba(31,30,41,0.08);
+  --shadow-teal: 0 10px 28px -8px rgba(106,208,188,0.55);
+
+  /* ---------- MOTION ---------- */
+  --ease-standard: cubic-bezier(0.2, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+
+  --focus-ring: 0 0 0 3px rgba(106, 208, 188, 0.45);
+}
+
+:root[data-theme="dark"] {
+  --bg: #17161F;  --bg-subtle: #1F1E29;  --bg-muted: #2A2936;
+  --surface: #1F1E29;
+  --fg-1: #F5F6F8; --fg-2: #CFD2DB; --fg-3: #9A98A8; --fg-4: #65647A;
+  --border: #2E2D3C; --border-strong: #3E3C4F; --divider: #272636;
+  --accent-soft: rgba(106, 208, 188, 0.12);
+}

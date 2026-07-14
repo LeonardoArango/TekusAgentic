@@ -29,10 +29,10 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render title', async () => {
+  it('should render the login screen when not authenticated', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.app-title')?.textContent).toContain('Agente WhatsApp Tekus');
+    expect(compiled.querySelector('.login__title')?.textContent).toContain('Agente de WhatsApp');
   });
 });

@@ -1,0 +1,55 @@
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar__logo">
+      <img src="assets/logos/k-mark-teal.png" alt="Tekus" class="sidebar__mark" />
+      <span class="sidebar__word">tekus</span>
+      <span class="sidebar__badge">console</span>
+    </div>
+
+    <nav class="sidebar__nav">
+      @for (item of nav; track item.key) {
+        <a
+          class="sidebar__link"
+          [class.sidebar__link--active]="active() === item.key"
+          (click)="active.set(item.key)"
+        >
+          {{ item.label }}
+        </a>
+      }
+    </nav>
+
+    <div class="sidebar__foot">
+      <div class="sidebar__user">
+        <div class="sidebar__avatar">{{ iniciales(auth.currentAccount()?.name) }}</div>
+        <div class="sidebar__uinfo">
+          <div class="sidebar__uname">{{ auth.currentAccount()?.name || 'Usuario Tekus' }}</div>
+          <div class="sidebar__urole">{{ auth.currentAccount()?.username }}</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <p class="topbar__eyebrow">Base de conocimiento</p>
+        <h1 class="topbar__title">Asistente de soporte</h1>
+      </div>
+      <button type="button" class="topbar__logout" (click)="auth.logout()">Cerrar sesión</button>
+    </header>
+
+    <section class="kpis">
+      @for (kpi of kpis; track kpi.label) {
+        <div class="kpi">
+          <span class="kpi__label">{{ kpi.label }}</span>
+          <div class="kpi__value">{{ kpi.value }}</div>
+          <div class="kpi__delta" [class.kpi__delta--pos]="kpi.positive">{{ kpi.delta }}</div>
+        </div>
+      }
+    </section>
+
+    <section class="content">
+      <app-rag-qa />
+    </section>
+  </main>
+</div>
