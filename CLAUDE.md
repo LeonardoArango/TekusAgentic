@@ -59,7 +59,7 @@ Confirmado como compromiso de roadmap (ver `docs/decisiones/0001-canal-voz-fase2
 
 ## Estrategia de RAG
 
-- **Odoo (CRM y Helpdesk) se consulta en vivo vía API. Nunca se vectoriza ni se duplica en pgvector.** Es el error más costoso de introducir por accidente (datos desactualizados, riesgo de exponer información que ya cambió en Odoo).
+- **Datos operativos de Odoo (estado de ticket, cuenta, mora, oportunidad) se consultan en vivo vía API. Nunca se vectorizan ni se duplican en pgvector** — es el error más costoso por accidente (datos desactualizados, exponer info que ya cambió en Odoo). **Excepción registrada (ADR 0005):** el conocimiento *histórico* de tickets resueltos (asunto/diagnóstico/solución) sí se indexa al RAG como fuente de troubleshooting. Es un límite fino: histórico de "qué pasó y cómo se resolvió" = indexable; estado actual/vivo = solo API. Ante la duda, en vivo.
 - **Confluence sí se indexa**: chunking semántico + embeddings en pgvector + metadatos de espacio/permiso.
 - Recuperación **híbrida**: `BM25 (top 20) + vector pgvector (top 20) → fusión RRF (top 30 únicos) → reranker (top 5-8) → contexto al LLM`. No usar recuperación vectorial pura — la ganancia de precisión del reranker (3-7% nDCG) importa en un producto donde una respuesta mala tiene costo reputacional.
 - Reranker por defecto: `bge-reranker-v2-m3` (BAAI/FlagEmbedding), autohospedado, multilingüe. Para la fusión RRF, partir de los ejemplos oficiales de `pgvector-python` (`examples/hybrid_search/`) en vez de reimplementarla desde cero.
@@ -116,7 +116,7 @@ Si el código existente no coincide con esta estructura, no la fuerces de golpe 
 ## Qué NO hacer sin confirmar con Leonardo
 
 - Cambiar el stack definido arriba (backend, frontend, base de datos, canal de mensajería, SSO).
-- Migrar o vectorizar datos de Odoo hacia Postgres.
+- Migrar o vectorizar datos operativos en vivo de Odoo hacia Postgres (el conocimiento histórico de tickets sí se indexa — ver ADR 0005, es una excepción ya autorizada, no un permiso general).
 - Introducir un BSP de WhatsApp de terceros en lugar de la conexión directa a Meta.
 - Relajar las reglas del Agente de Políticas (guardrails) que limitan cuándo el bot puede vender.
 

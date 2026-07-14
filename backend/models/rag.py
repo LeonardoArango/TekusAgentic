@@ -1,6 +1,10 @@
-"""Modelos Postgres/pgvector para el RAG de Confluence.
+"""Modelos Postgres/pgvector para el RAG.
 
-Solo Confluence se vectoriza aquí (ver docs/decisiones/0002-odoo-en-vivo-no-vectorizado.md).
+Fuentes indexadas: Confluence (spaces kiosk/AK/AL) y conocimiento histórico
+de tickets de Odoo Helpdesk (space_key ODOO_HELPDESK) — ver
+docs/decisiones/0002-odoo-en-vivo-no-vectorizado.md y su excepción en
+docs/decisiones/0005-indexar-tickets-odoo-y-embeddings-openai.md. Los datos
+operativos en vivo de Odoo siguen consultándose por API, nunca desde acá.
 """
 
 from __future__ import annotations
@@ -56,7 +60,7 @@ class ConfluenceChunk(Base):
     page_url: Mapped[str] = mapped_column(String(1024))
     chunk_index: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[list[float]] = mapped_column(Vector(384))
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536))
     tsv: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('spanish', text)", persisted=True)
     )

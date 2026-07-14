@@ -15,11 +15,7 @@ from sqlalchemy.orm import Session
 
 from agents.llm_client_openai import responder_pregunta_rag
 from api.platform.auth import UsuarioAutenticado, get_current_user
-from rag.indexacion.embeddings import (
-    EmbeddingsProvider,
-    HttpEmbeddingsProvider,
-    LocalDevFallbackEmbeddingsProvider,
-)
+from rag.indexacion.provider_factory import get_embeddings_provider
 from rag.recuperacion.hybrid_search import hybrid_search
 
 router = APIRouter(prefix="/api/platform/rag", tags=["platform", "rag"])
@@ -32,12 +28,6 @@ def _get_engine():
     if _engine is None:
         _engine = create_engine(os.environ["DATABASE_URL"].replace("+asyncpg", "+psycopg"))
     return _engine
-
-
-def _get_embeddings_provider() -> EmbeddingsProvider:
-    if os.environ.get("EMBEDDINGS_SERVICE_URL"):
-        return HttpEmbeddingsProvider()
-    return LocalDevFallbackEmbeddingsProvider()
 
 
 class PreguntaRequest(BaseModel):
@@ -67,7 +57,7 @@ def preguntar(
     sin autenticación, aunque el contenido fuente (Confluence) no sea
     sensible por sí mismo: es una llamada con costo de LLM por request.
     """
-    embeddings = _get_embeddings_provider()
+    embeddings = get_embeddings_provider()
     with Session(_get_engine()) as session:
         contexto = hybrid_search(session, body.pregunta, embeddings)
 

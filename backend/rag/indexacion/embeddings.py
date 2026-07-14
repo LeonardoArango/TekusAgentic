@@ -22,11 +22,43 @@ from typing import Protocol
 
 import httpx
 
-EMBEDDING_DIM = 384
+# 1536 = dimensión nativa de text-embedding-3-small (OpenAI). El servicio
+# autohospedado (bge-m3) también puede producir 1536 con proyección; si se
+# cambia de modelo con otra dimensión hay que recrear la columna Vector y
+# re-indexar (ver models/rag.py).
+EMBEDDING_DIM = 1536
 
 
 class EmbeddingsProvider(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+class OpenAIEmbeddingsProvider:
+    """Embeddings vía OpenAI (text-embedding-3-small).
+
+    Decisión de Leonardo (2026-07-14): usar OpenAI para embeddings además de
+    para generar respuestas, en vez del servicio autohospedado que planteaba
+    la investigación — desbloquea calidad real sin operar infra de modelos.
+    Ver docs/decisiones/0005-indexar-tickets-odoo-y-embeddings-openai.md.
+    """
+
+    def __init__(self, model: str | None = None, api_key: str | None = None) -> None:
+        from openai import OpenAI
+
+        self._model = model or os.environ.get("OPENAI_EMBEDDINGS_MODEL", "text-embedding-3-small")
+        self._client = OpenAI(api_key=api_key or os.environ["OPENAI_API_KEY"])
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        # OpenAI acepta lotes; se acota a 128 por llamada para no exceder el
+        # límite de tokens por request con textos largos.
+        out: list[list[float]] = []
+        for i in range(0, len(texts), 128):
+            lote = texts[i : i + 128]
+            resp = self._client.embeddings.create(model=self._model, input=lote)
+            out.extend(item.embedding for item in resp.data)
+        return out
 
 
 class HttpEmbeddingsProvider:

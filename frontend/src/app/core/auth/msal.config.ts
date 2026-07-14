@@ -49,7 +49,11 @@ export function msalGuardConfigFactory(): MsalGuardConfiguration {
 export function msalInterceptorConfigFactory(): MsalInterceptorConfiguration {
   const protectedResourceMap = new Map<string, Array<string>>();
   if (environment.entra.apiScope) {
-    protectedResourceMap.set(environment.apiBaseUrl, [environment.entra.apiScope]);
+    // MsalInterceptor usa matching estricto por defecto: la clave debe
+    // terminar en `/*` para que haga match con subrutas (`/api/platform/...`),
+    // si no, la compara como ruta exacta y el interceptor no adjunta ningún
+    // token — sin error visible, solo un log "no scopes for endpoint".
+    protectedResourceMap.set(`${environment.apiBaseUrl}/*`, [environment.entra.apiScope]);
   }
 
   return {

@@ -22,11 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from connectors.confluence.client import ConfluencePage  # noqa: E402
 from models.rag import Base  # noqa: E402
-from rag.indexacion.embeddings import (  # noqa: E402
-    HttpEmbeddingsProvider,
-    LocalDevFallbackEmbeddingsProvider,
-)
 from rag.indexacion.indexer import index_pages, reconciliar_espacio  # noqa: E402
+from rag.indexacion.provider_factory import get_embeddings_provider  # noqa: E402
 from rag.ingesta.exclusions import is_excluded  # noqa: E402
 
 SEED_DIR = Path(__file__).resolve().parents[1] / "rag" / "_seed_data"
@@ -50,15 +47,7 @@ def main() -> None:
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
 
-    if os.environ.get("EMBEDDINGS_SERVICE_URL"):
-        embeddings = HttpEmbeddingsProvider()
-    else:
-        print(
-            "AVISO: EMBEDDINGS_SERVICE_URL no configurado — usando "
-            "LocalDevFallbackEmbeddingsProvider (solo para dev sin red, sin "
-            "calidad semántica real). No usar en producción."
-        )
-        embeddings = LocalDevFallbackEmbeddingsProvider()
+    embeddings = get_embeddings_provider()
 
     pages_by_space: dict[str, list[ConfluencePage]] = {}
     for json_path in sorted(SEED_DIR.glob("*.json")):
