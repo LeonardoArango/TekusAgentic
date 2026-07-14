@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -15,6 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from agents.llm_client_openai import responder_pregunta_rag
+from agents.soporte_web import memoria
 from agents.soporte_web.grafo import construir_grafo, fuentes_publicas
 from api.platform.auth import UsuarioAutenticado, get_current_user
 from rag.indexacion.provider_factory import get_embeddings_provider
@@ -122,32 +124,32 @@ def preguntar(
 # ---------------------------------------------------------------------------
 
 
-class MensajeChat(BaseModel):
-    rol: str  # 'user' | 'assistant'
-    texto: str
-
-
 class ChatRequest(BaseModel):
-    mensajes: list[MensajeChat]
+    texto: str  # último mensaje del cliente
+    conversation_id: str | None = None  # None en el primer turno; el server lo genera
 
 
 class ChatResponse(BaseModel):
+    conversation_id: str
     tipo: str  # 'pregunta' | 'respuesta' | 'escalar'
     texto: str
     fuentes: list[FuenteResponse]
-    intencion: str = "soporte"  # 'soporte' | 'venta' | 'mixto' (venta solo se etiqueta, Fase 1)
-    ticket_ref: str | None = None  # nº del ticket recién creado para ESTE cliente (si aplica)
+    intencion: str = "soporte"
+    fase: str = "saludo"
+    ticket_ref: str | None = None
 
 
-def _crear_ticket(nombre: str, correo: str, resumen: str) -> str | None:
-    """CreadorTicket para el grafo. Respeta el gate de escritura a Odoo."""
+def _crear_ticket(nombre: str, correo: str, resumen: str, sede: str) -> str | None:
+    """CreadorTicket para el grafo. Respeta el gate de escritura a Odoo. La
+    sede va en la descripción para que el agente humano coordine la visita."""
     if not _ticket_write_enabled():
         logger.info("Escalamiento (escritura de ticket deshabilitada): resumen=%s", resumen[:80])
         return None
     try:
+        descripcion = resumen + (f"\n\nSede/punto: {sede}" if sede else "")
         ticket = _get_helpdesk().crear_ticket(
             asunto=resumen[:120],
-            descripcion=resumen,
+            descripcion=descripcion,
             nombre_cliente=nombre,
             correo_cliente=correo,
         )
@@ -162,35 +164,49 @@ def chat(
     body: ChatRequest,
     usuario: UsuarioAutenticado = Depends(get_current_user),  # noqa: B008
 ) -> ChatResponse:
-    """Un turno del flujo conversacional de soporte (grafo LangGraph, ADR 0006).
+    """Un turno del motor conversacional (grafo LangGraph, ADR 0006).
 
-    Sin estado en el servidor: el historial completo viaja en cada request
-    (lo mantiene el frontend). El grafo decide aclarar/resolver/escalar; el
-    saludo, el gating de datos y la creación de ticket son determinísticos.
+    El estado de la conversación vive en Redis por conversation_id (memoria);
+    el frontend solo manda el último mensaje + el id. El grafo entiende el
+    turno, decide la acción y redacta; saludo/gating/ticket son del grafo.
     """
-    mensajes = [m.model_dump() for m in body.mensajes]
-    if not any(m["rol"] == "user" for m in mensajes):
-        return ChatResponse(tipo="pregunta", texto="¿En qué te puedo ayudar?", fuentes=[])
+    texto = (body.texto or "").strip()
+    conversation_id = body.conversation_id or str(uuid.uuid4())
+    if not texto:
+        return ChatResponse(
+            conversation_id=conversation_id,
+            tipo="pregunta",
+            texto="¿En qué te puedo ayudar?",
+            fuentes=[],
+        )
 
-    es_primer_turno = not any(m["rol"] == "assistant" for m in mensajes)
+    estado = memoria.cargar(conversation_id, canal="web")
+    estado.agregar_turno("user", texto)
+
     embeddings = get_embeddings_provider()
-
     with Session(_get_engine()) as session:
 
         def buscar(query: str) -> list[dict]:
             return hybrid_search(session, query, embeddings)
 
         grafo = construir_grafo(buscar, _crear_ticket)
-        estado = grafo.invoke({"mensajes": mensajes, "es_primer_turno": es_primer_turno})
+        gs = grafo.invoke({"estado": estado})
+
+    respuesta = gs.get("texto", "")
+    estado.agregar_turno("assistant", respuesta)
+    memoria.resumir_si_necesario(estado)
+    memoria.guardar(estado)
 
     fuentes = [
         FuenteResponse(page_title=c["page_title"], page_url=c["page_url"], space_key=c["space_key"])
-        for c in fuentes_publicas(estado)
+        for c in fuentes_publicas(gs)
     ]
     return ChatResponse(
-        tipo=estado.get("tipo", "respuesta"),
-        texto=estado.get("texto", ""),
+        conversation_id=conversation_id,
+        tipo=gs.get("tipo", "respuesta"),
+        texto=respuesta,
         fuentes=fuentes,
-        intencion=estado.get("intencion", "soporte"),
-        ticket_ref=estado.get("ticket_ref"),
+        intencion=estado.intencion,
+        fase=estado.fase.value,
+        ticket_ref=estado.ticket_ref,
     )

@@ -9,30 +9,30 @@ export interface FuenteRag {
   space_key: string;
 }
 
-export interface MensajeChat {
-  rol: 'user' | 'assistant';
-  texto: string;
-}
-
 export interface ChatResponse {
+  conversation_id: string;
   tipo: 'pregunta' | 'respuesta' | 'escalar';
   texto: string;
   fuentes: FuenteRag[];
   intencion?: 'soporte' | 'venta' | 'mixto';
+  fase?: string;
+  ticket_ref?: string | null;
 }
 
 /**
- * El interceptor de MSAL (ver core/auth/msal.config.ts) adjunta el Bearer
- * token automáticamente a cualquier request cuya URL empiece con
- * environment.apiBaseUrl — no hay que hacer nada especial acá para el SSO.
+ * El estado de la conversación vive en el servidor (Redis) por
+ * conversation_id; el frontend solo manda el último mensaje + el id (que el
+ * server devuelve en el primer turno). El interceptor de MSAL adjunta el
+ * Bearer token automáticamente (ver core/auth/msal.config.ts).
  */
 @Injectable({ providedIn: 'root' })
 export class RagQaService {
   private readonly http = inject(HttpClient);
 
-  chat(mensajes: MensajeChat[]): Observable<ChatResponse> {
+  chat(texto: string, conversationId: string | null): Observable<ChatResponse> {
     return this.http.post<ChatResponse>(`${environment.apiBaseUrl}/platform/rag/chat`, {
-      mensajes,
+      texto,
+      conversation_id: conversationId,
     });
   }
 }

@@ -27,6 +27,41 @@ def _model() -> str:
     return os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 
+def modelo_dialogo() -> str:
+    """Modelo para comprensión (NLU) y redacción (NLG) — calidad conversacional."""
+    return os.environ.get("OPENAI_MODEL_DIALOGO", "gpt-4o")
+
+
+def modelo_simple() -> str:
+    """Modelo para tareas triviales (resumen, extracciones) — barato."""
+    return os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+
+def clasificar(system: str, mensajes: list[dict], tool: dict, model: str | None = None) -> dict:
+    """Salida estructurada vía tool-calling (para NLU). `mensajes` = [{role, content}]."""
+    resp = _get_client().chat.completions.create(
+        model=model or modelo_dialogo(),
+        messages=[{"role": "system", "content": system}, *mensajes],
+        tools=[tool],
+        tool_choice={"type": "function", "function": {"name": tool["function"]["name"]}},
+    )
+    import json as _json
+
+    return _json.loads(resp.choices[0].message.tool_calls[0].function.arguments)
+
+
+def completar_texto(
+    system: str, mensajes: list[dict], model: str | None = None, temperatura: float = 0.6
+) -> str:
+    """Texto libre natural (para NLG). `mensajes` = [{role, content}]."""
+    resp = _get_client().chat.completions.create(
+        model=model or modelo_dialogo(),
+        messages=[{"role": "system", "content": system}, *mensajes],
+        temperature=temperatura,
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
 _RESPONDER_TOOL = {
     "type": "function",
     "function": {

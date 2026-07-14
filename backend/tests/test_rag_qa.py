@@ -1,12 +1,15 @@
-"""Tests del endpoint de preguntas al RAG (plataforma web) — mockea
-hybrid_search y el cliente OpenAI, no requiere Postgres real ni llamadas
-salientes (ver CLAUDE.md: mockear Odoo/Confluence/WhatsApp desde el día uno,
-mismo criterio aplica a servicios LLM externos)."""
+"""Tests del endpoint conversacional /chat (motor LangGraph) y /preguntas.
 
+Mockea NLU/NLG (agents.soporte_web.grafo.{nlu,nlg}), la recuperación y la
+memoria Redis — no requiere Postgres, Redis ni llamadas a OpenAI.
+"""
+
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from agents.soporte_web.estado import DialogueState
 from api.platform.auth import UsuarioAutenticado, get_current_user
 from main import app
 
@@ -17,237 +20,189 @@ def _override_usuario():
     return UsuarioAutenticado(oid="test-oid", nombre="Test User", correo="test@tekus.co")
 
 
-def test_preguntas_sin_token_devuelve_401():
-    response = client.post("/api/platform/rag/preguntas", json={"pregunta": "hola"})
-    assert response.status_code == 401
+@contextmanager
+def _memoria_en_memoria():
+    """Reemplaza la memoria Redis por un dict en proceso."""
+    store: dict[str, DialogueState] = {}
+
+    def cargar(cid, canal="web"):
+        return store.get(cid) or DialogueState(conversation_id=cid, canal=canal)
+
+    def guardar(est):
+        store[est.conversation_id] = est
+
+    with (
+        patch("api.platform.rag_qa.memoria.cargar", side_effect=cargar),
+        patch("api.platform.rag_qa.memoria.guardar", side_effect=guardar),
+        patch("api.platform.rag_qa.memoria.resumir_si_necesario"),
+        patch("api.platform.rag_qa._get_engine"),
+        patch("api.platform.rag_qa.Session"),
+    ):
+        yield store
 
 
-def test_preguntas_sin_contexto_no_llama_al_llm():
-    app.dependency_overrides[get_current_user] = _override_usuario
-    try:
-        with (
-            patch("api.platform.rag_qa._get_engine"),
-            patch("api.platform.rag_qa.Session"),
-            patch("api.platform.rag_qa.hybrid_search", return_value=[]) as mock_search,
-            patch("api.platform.rag_qa.responder_pregunta_rag") as mock_llm,
-        ):
-            response = client.post(
-                "/api/platform/rag/preguntas", json={"pregunta": "¿algo sin contexto?"}
-            )
-        assert response.status_code == 200
-        assert response.json() == {"puede_resolver": False, "respuesta": "", "fuentes": []}
-        mock_search.assert_called_once()
-        mock_llm.assert_not_called()
-    finally:
-        app.dependency_overrides.pop(get_current_user, None)
+def _post(texto, cid=None):
+    return client.post("/api/platform/rag/chat", json={"texto": texto, "conversation_id": cid})
+
+
+# --- auth -------------------------------------------------------------------
 
 
 def test_chat_sin_token_devuelve_401():
-    response = client.post(
-        "/api/platform/rag/chat", json={"mensajes": [{"rol": "user", "texto": "hola"}]}
-    )
-    assert response.status_code == 401
+    assert _post("hola").status_code == 401
 
 
-_ESTADO_VACIO = {
-    "nombre": "",
-    "correo": "",
-    "cuenta": "",
-    "resumen_problema": "la pantalla no muestra imagen",
-    "intencion": "soporte",
-    "pide_humano": False,
-}
+# --- regresión del screenshot: meta-pregunta NO se ignora ni se repite ------
 
 
-def _chat(mensajes, contexto, estado, decision):
-    """Invoca /chat mockeando los nodos LLM del grafo y la recuperación."""
-    with (
-        patch("api.platform.rag_qa._get_engine"),
-        patch("api.platform.rag_qa.Session"),
-        patch("api.platform.rag_qa.hybrid_search", return_value=contexto),
-        patch("agents.soporte_web.grafo.llm.extraer_estado_conversacion", return_value=estado),
-        patch("agents.soporte_web.grafo.llm.decidir_soporte", return_value=decision),
-    ):
-        return client.post("/api/platform/rag/chat", json={"mensajes": mensajes})
-
-
-def test_chat_agente_pide_aclaracion():
+def test_meta_pregunta_se_responde_no_se_repite():
     app.dependency_overrides[get_current_user] = _override_usuario
     try:
-        r = _chat(
-            [{"rol": "user", "texto": "tengo un problema con la pantalla"}],
-            contexto=[{"text": "algo", "page_title": "x", "page_url": "u", "space_key": "AL"}],
-            estado=_ESTADO_VACIO,
-            decision={"accion": "aclarar", "pregunta": "¿Está totalmente negra o con rayas?"},
-        )
+        with (
+            _memoria_en_memoria(),
+            patch("api.platform.rag_qa.hybrid_search", return_value=[]),
+            patch(
+                "agents.soporte_web.grafo.nlu.entender",
+                return_value={
+                    "acto": "meta_pregunta",
+                    "sentimiento": "neutral",
+                    "intencion": "soporte",
+                },
+            ),
+            patch(
+                "agents.soporte_web.grafo.nlg.responder_meta",
+                return_value="Soy Kai, un asistente virtual de Tekus.",
+            ) as meta,
+        ):
+            r = _post("¿eres humano?")
         assert r.status_code == 200
         body = r.json()
         assert body["tipo"] == "pregunta"
-        assert "negra" in body["texto"].lower()
-        assert body["fuentes"] == []
+        assert "virtual" in body["texto"].lower()
+        assert "correo" not in body["texto"].lower()  # NO cae en el gate de datos
+        meta.assert_called_once()
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
 
-def test_chat_agente_resuelve_con_fuentes():
+# --- resolver: solo fuentes públicas de Confluence --------------------------
+
+
+def test_resolver_filtra_fuentes_internas():
     app.dependency_overrides[get_current_user] = _override_usuario
     contexto = [
         {
-            "text": "Reinicia el player manteniendo el botón 5 segundos.",
-            "page_title": "Errores conocidos",
-            "page_url": "https://wiki/x/9",
-            "space_key": "AL",
-        }
-    ]
-    try:
-        r = _chat(
-            [
-                {"rol": "user", "texto": "la pantalla se ve negra"},
-                {"rol": "assistant", "texto": "¿totalmente negra?"},
-                {"rol": "user", "texto": "sí, totalmente"},
-            ],
-            contexto=contexto,
-            estado=_ESTADO_VACIO,
-            decision={
-                "accion": "resolver",
-                "respuesta": "Mantén presionado el botón 5 segundos.",
-                "fuentes_usadas": [0],
-            },
-        )
-        assert r.status_code == 200
-        body = r.json()
-        assert body["tipo"] == "respuesta"
-        assert body["fuentes"][0]["space_key"] == "AL"
-    finally:
-        app.dependency_overrides.pop(get_current_user, None)
-
-
-def test_chat_escala_pide_datos_si_faltan():
-    """Si el cliente pide humano pero no hay nombre/correo, el agente los pide
-    (no crea ticket todavía)."""
-    app.dependency_overrides[get_current_user] = _override_usuario
-    try:
-        r = _chat(
-            [{"rol": "user", "texto": "quiero hablar con una persona"}],
-            contexto=[],
-            estado={**_ESTADO_VACIO, "pide_humano": True},
-            decision={"accion": "escalar"},
-        )
-        assert r.status_code == 200
-        body = r.json()
-        assert body["tipo"] == "pregunta"
-        assert "correo" in body["texto"].lower() or "nombre" in body["texto"].lower()
-        assert body["ticket_ref"] is None
-    finally:
-        app.dependency_overrides.pop(get_current_user, None)
-
-
-def test_chat_escala_crea_ticket_con_datos():
-    """Con nombre+correo y escritura habilitada, escala creando el ticket."""
-    app.dependency_overrides[get_current_user] = _override_usuario
-    estado = {
-        **_ESTADO_VACIO,
-        "nombre": "Leonardo",
-        "correo": "leo@tienda.com",
-        "pide_humano": True,
-    }
-    try:
-        with patch("api.platform.rag_qa._crear_ticket", return_value="9001") as mock_crear:
-            r = _chat(
-                [
-                    {
-                        "rol": "user",
-                        "texto": "quiero que me contacte alguien, soy Leonardo, leo@tienda.com",
-                    }
-                ],
-                contexto=[],
-                estado=estado,
-                decision={"accion": "escalar"},
-            )
-        assert r.status_code == 200
-        body = r.json()
-        assert body["tipo"] == "escalar"
-        assert body["ticket_ref"] == "9001"
-        assert "9001" in body["texto"]
-        mock_crear.assert_called_once()
-    finally:
-        app.dependency_overrides.pop(get_current_user, None)
-
-
-def test_chat_no_expone_fuentes_internas_de_odoo():
-    """Las fuentes de tickets de Odoo (internas) NUNCA se muestran al usuario."""
-    app.dependency_overrides[get_current_user] = _override_usuario
-    contexto = [
-        {
-            "text": "Ticket resuelto: se cambió la fuente.",
-            "page_title": "Ticket #4398",
-            "page_url": "https://erp.tekus.co/odoo/helpdesk/4385",
+            "text": "ticket interno",
+            "page_title": "Ticket #x",
+            "page_url": "https://erp/helpdesk/1",
             "space_key": "ODOO_HELPDESK",
         },
-        {
-            "text": "Reinicia el player 5 segundos.",
-            "page_title": "Errores conocidos",
-            "page_url": "https://wiki/x/9",
-            "space_key": "AL",
-        },
+        {"text": "doc", "page_title": "Errores", "page_url": "https://wiki/9", "space_key": "AL"},
     ]
     try:
-        r = _chat(
-            [{"rol": "user", "texto": "pantalla sin imagen"}],
-            contexto=contexto,
-            estado=_ESTADO_VACIO,
-            decision={
-                "accion": "resolver",
-                "respuesta": "Reinícialo 5 segundos.",
-                "fuentes_usadas": [0, 1],  # usó ambos, pero solo se muestra el público
-            },
-        )
+        with (
+            _memoria_en_memoria(),
+            patch("api.platform.rag_qa.hybrid_search", return_value=contexto),
+            patch(
+                "agents.soporte_web.grafo.nlu.entender",
+                return_value={
+                    "acto": "reportar_problema",
+                    "sentimiento": "neutral",
+                    "intencion": "soporte",
+                    "problema": "la pantalla no muestra imagen",
+                },
+            ),
+            patch(
+                "agents.soporte_web.grafo.nlu.decidir_problema",
+                return_value={
+                    "accion": "resolver",
+                    "borrador_respuesta": "reinicia",
+                    "fuentes_usadas": [0, 1],
+                },
+            ),
+            patch("agents.soporte_web.grafo.nlg.resolver", return_value="Reinícialo."),
+        ):
+            r = _post("la pantalla no muestra imagen")
         assert r.status_code == 200
         fuentes = r.json()["fuentes"]
-        assert len(fuentes) == 1
-        assert fuentes[0]["space_key"] == "AL"
+        assert len(fuentes) == 1 and fuentes[0]["space_key"] == "AL"
         assert all("helpdesk" not in f["page_url"] for f in fuentes)
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
 
-def test_preguntas_con_contexto_devuelve_respuesta_y_fuentes():
+# --- escalamiento: pide datos si faltan; crea ticket si están ---------------
+
+
+def test_pedir_humano_sin_datos_pide_datos_no_crea_ticket():
     app.dependency_overrides[get_current_user] = _override_usuario
-    contexto = [
-        {
-            "chunk_id": "1",
-            "text": "Para reiniciar el kiosco, mantén presionado el botón 5 segundos.",
-            "page_title": "Manual de kioscos",
-            "page_url": "https://wiki/x/1",
-            "space_key": "kiosk",
-        }
-    ]
     try:
         with (
-            patch("api.platform.rag_qa._get_engine"),
-            patch("api.platform.rag_qa.Session"),
-            patch("api.platform.rag_qa.hybrid_search", return_value=contexto),
+            _memoria_en_memoria(),
+            patch("api.platform.rag_qa.hybrid_search", return_value=[]),
             patch(
-                "api.platform.rag_qa.responder_pregunta_rag",
+                "agents.soporte_web.grafo.nlu.entender",
                 return_value={
-                    "puede_resolver": True,
-                    "respuesta": "Mantén presionado el botón 5 segundos.",
-                    "fuentes_usadas": [0],
+                    "acto": "pedir_humano",
+                    "sentimiento": "neutral",
+                    "intencion": "soporte",
                 },
             ),
+            patch(
+                "agents.soporte_web.grafo.nlg.recolectar_dato",
+                return_value="¿Me compartes tu nombre y correo?",
+            ),
+            patch("api.platform.rag_qa._crear_ticket", return_value=None) as crear,
         ):
-            response = client.post(
-                "/api/platform/rag/preguntas", json={"pregunta": "¿cómo reinicio el kiosco?"}
-            )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["puede_resolver"] is True
-        assert body["fuentes"] == [
-            {
-                "page_title": "Manual de kioscos",
-                "page_url": "https://wiki/x/1",
-                "space_key": "kiosk",
-            }
-        ]
+            r = _post("quiero hablar con una persona")
+        assert r.status_code == 200
+        assert r.json()["tipo"] == "pregunta"
+        assert r.json()["ticket_ref"] is None
+        crear.assert_not_called()
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_pedir_humano_con_datos_crea_ticket():
+    app.dependency_overrides[get_current_user] = _override_usuario
+    try:
+        with (
+            _memoria_en_memoria(),
+            patch("api.platform.rag_qa.hybrid_search", return_value=[]),
+            patch(
+                "agents.soporte_web.grafo.nlu.entender",
+                return_value={
+                    "acto": "pedir_humano",
+                    "sentimiento": "neutral",
+                    "intencion": "soporte",
+                    "datos": {
+                        "nombre": "Leonardo",
+                        "correo": "leo@tienda.com",
+                        "sede": "CC Cacique",
+                    },
+                },
+            ),
+            patch(
+                "agents.soporte_web.grafo.nlg.escalar", return_value="Listo, dejé tu caso #9001."
+            ),
+            patch("api.platform.rag_qa._crear_ticket", return_value="9001") as crear,
+        ):
+            r = _post("soy Leonardo, leo@tienda.com, en CC Cacique; que me contacte alguien")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["tipo"] == "escalar" and body["ticket_ref"] == "9001"
+        crear.assert_called_once()
+        # la sede se pasa al creador de ticket
+        assert (
+            crear.call_args.args[3] == "CC Cacique"
+            or crear.call_args.kwargs.get("sede") == "CC Cacique"
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+# --- /preguntas (QA one-shot, sin conversación) -----------------------------
+
+
+def test_preguntas_sin_token_devuelve_401():
+    assert client.post("/api/platform/rag/preguntas", json={"pregunta": "hola"}).status_code == 401

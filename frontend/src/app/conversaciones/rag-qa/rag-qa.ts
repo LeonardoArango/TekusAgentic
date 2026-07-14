@@ -1,6 +1,6 @@
 import { Component, ElementRef, inject, signal, viewChild, effect } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { FuenteRag, MensajeChat, RagQaService } from './rag-qa.service';
+import { FuenteRag, RagQaService } from './rag-qa.service';
 
 interface TurnoUI {
   rol: 'user' | 'assistant';
@@ -23,6 +23,7 @@ export class RagQa {
   protected borrador = '';
   protected readonly cargando = signal(false);
   protected readonly turnos = signal<TurnoUI[]>([]);
+  private conversationId: string | null = null;
 
   constructor() {
     // Auto-scroll al último turno cuando cambia la conversación.
@@ -48,10 +49,9 @@ export class RagQa {
     this.borrador = '';
     this.cargando.set(true);
 
-    const historial: MensajeChat[] = this.turnos().map((t) => ({ rol: t.rol, texto: t.texto }));
-
-    this.ragQa.chat(historial).subscribe({
+    this.ragQa.chat(texto, this.conversationId).subscribe({
       next: (resp) => {
+        this.conversationId = resp.conversation_id;
         this.turnos.update((t) => [
           ...t,
           {
@@ -79,5 +79,6 @@ export class RagQa {
   protected reiniciar(): void {
     this.turnos.set([]);
     this.borrador = '';
+    this.conversationId = null; // nueva conversación = nuevo id/estado en servidor
   }
 }
