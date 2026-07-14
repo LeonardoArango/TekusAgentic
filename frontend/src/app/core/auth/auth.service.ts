@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { MsalService } from '@azure/msal-angular';
 import { AccountInfo } from '@azure/msal-browser';
+import { environment } from '../../../environments/environment';
 
 /**
  * Envoltorio delgado sobre MSAL. Toda la lógica real de auth vive en
@@ -23,7 +24,13 @@ export class AuthService {
   }
 
   login(): void {
-    this.msal.loginRedirect();
+    // Pedimos el scope de nuestra API en el LOGIN, no después: así el
+    // consentimiento se otorga de entrada y el interceptor puede sacar el
+    // token de la API silenciosamente. Sin esto, la primera llamada al
+    // backend falla con 400 (consent/interaction required) en el endpoint
+    // de token de Microsoft.
+    const scopes = environment.entra.apiScope ? [environment.entra.apiScope] : [];
+    this.msal.loginRedirect({ scopes });
   }
 
   logout(): void {
