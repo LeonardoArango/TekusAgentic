@@ -153,6 +153,52 @@ def test_chat_agente_escala_a_humano():
         app.dependency_overrides.pop(get_current_user, None)
 
 
+def test_chat_no_expone_fuentes_internas_de_odoo():
+    """Las fuentes de tickets de Odoo (internas) NUNCA se muestran al usuario;
+    solo documentos públicos de Confluence."""
+    app.dependency_overrides[get_current_user] = _override_usuario
+    contexto = [
+        {  # ticket interno de Odoo — debe filtrarse
+            "text": "Ticket resuelto: se cambió la fuente.",
+            "page_title": "Ticket #4398",
+            "page_url": "https://erp.tekus.co/odoo/helpdesk/4385",
+            "space_key": "ODOO_HELPDESK",
+        },
+        {  # doc público de Confluence — sí se muestra
+            "text": "Reinicia el player 5 segundos.",
+            "page_title": "Errores conocidos",
+            "page_url": "https://wiki/x/9",
+            "space_key": "AL",
+        },
+    ]
+    try:
+        with (
+            patch("api.platform.rag_qa._get_engine"),
+            patch("api.platform.rag_qa.Session"),
+            patch("api.platform.rag_qa.hybrid_search", return_value=contexto),
+            patch(
+                "api.platform.rag_qa.conversar_rag",
+                return_value={
+                    "accion": "responder",
+                    "intencion": "soporte",
+                    "respuesta": "Reinícialo 5 segundos.",
+                    "fuentes_usadas": [0, 1],  # el LLM usó ambos, pero solo se muestra el público
+                },
+            ),
+        ):
+            response = client.post(
+                "/api/platform/rag/chat",
+                json={"mensajes": [{"rol": "user", "texto": "pantalla sin imagen"}]},
+            )
+        assert response.status_code == 200
+        fuentes = response.json()["fuentes"]
+        assert len(fuentes) == 1
+        assert fuentes[0]["space_key"] == "AL"
+        assert all("helpdesk" not in f["page_url"] for f in fuentes)
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
 def test_preguntas_con_contexto_devuelve_respuesta_y_fuentes():
     app.dependency_overrides[get_current_user] = _override_usuario
     contexto = [

@@ -123,6 +123,24 @@ _CONVERSAR_TOOL = {
                         "Si accion='escalar': sin_respuesta | no_converge | cliente_pide_humano."
                     ),
                 },
+                "datos_cliente": {
+                    "type": "object",
+                    "description": (
+                        "Datos del cliente reunidos/confirmados hasta ahora en la "
+                        "conversación (pueden estar parciales o vacíos)."
+                    ),
+                    "properties": {
+                        "nombre": {"type": "string"},
+                        "correo": {"type": "string"},
+                        "cuenta": {"type": "string"},
+                    },
+                },
+                "resumen_problema": {
+                    "type": "string",
+                    "description": (
+                        "Si accion='escalar': resumen breve del problema para el ticket."
+                    ),
+                },
             },
             "required": ["accion", "intencion"],
         },
@@ -131,30 +149,51 @@ _CONVERSAR_TOOL = {
 
 
 def conversar_rag(mensajes: list[dict], fragmentos: list[str]) -> dict:
-    """Flujo conversacional de 3 acciones (ver ADR 0006).
+    """Flujo conversacional del Agente de Soporte (ver ADR 0006).
 
     `mensajes` es el historial [{rol: 'user'|'assistant', texto: str}, ...].
     Devuelve {accion, intencion, pregunta_aclaratoria, respuesta, fuentes_usadas,
-    motivo_escalamiento}.
+    motivo_escalamiento, datos_cliente, resumen_problema}.
     """
     contexto_numerado = "\n\n".join(f"[{i}] {frag}" for i, frag in enumerate(fragmentos))
 
     system = (
-        "Eres el asistente de soporte de Tekus. Respondes usando EXCLUSIVAMENTE el "
-        "contexto entregado (wiki de Confluence y tickets de soporte resueltos).\n"
-        "Elige la acción del turno:\n"
-        "- preguntar: si la consulta es ambigua o falta un dato clave (modelo/tipo de "
-        "equipo, síntoma exacto, en qué punto ocurre, qué ya intentó). Haz UNA pregunta "
-        "concreta. No interrogues de más.\n"
-        "- responder: en cuanto tengas lo suficiente, da la solución paso a paso citando "
-        "las fuentes usadas.\n"
-        "- escalar: si el contexto no tiene la respuesta, si ya preguntaste y el cliente no "
-        "puede darte el dato (no converge), o si pide hablar con un humano. Al escalar, "
-        "dile con calidez que lo pasas a un agente humano.\n"
-        "Clasifica también la intención (soporte/venta/mixto); en esta fase la venta solo "
-        "se etiqueta, no actúes como vendedor.\n"
-        "Tono cercano, de tú, en español. Sin emojis. Nunca inventes lo que no está en el "
-        "contexto."
+        "Eres el asistente de soporte de Tekus. Atiendes en español, tono cercano de tú, "
+        "sin emojis. Respondes usando EXCLUSIVAMENTE el contexto entregado.\n"
+        "\n"
+        "APERTURA (SOLO en tu primer mensaje de la conversación): SIEMPRE empieza "
+        "saludando; si el cliente dijo su nombre, úsalo. Confirma en UNA frase lo que "
+        "entendiste de su problema y luego pide lo que falte. Ejemplo: 'Hola Leonardo, "
+        "entiendo que la pantalla no te muestra imagen. Para ayudarte mejor, ¿...?'. No "
+        "sueltes un formulario; hazlo natural. (En los turnos siguientes ya no saludes.)\n"
+        "\n"
+        "DATOS DEL CLIENTE: para poder escalar o crear un ticket necesitas su NOMBRE y "
+        "CORREO (la cuenta/empresa es opcional pero útil). Ve reuniéndolos en la "
+        "conversación y devuélvelos en 'datos_cliente'. No pidas todo de golpe si ya venían "
+        "en el mensaje inicial.\n"
+        "\n"
+        "ACCIÓN del turno:\n"
+        "- preguntar: si falta un dato clave del problema (modelo/tipo de equipo, síntoma "
+        "exacto, en qué punto ocurre, qué ya intentó) O falta nombre/correo para escalar. "
+        "UNA pregunta a la vez. NUNCA repitas una pregunta que ya hiciste; si el cliente ya "
+        "respondió (aunque sea 'sí'/'no'), tómalo como respondido y avanza.\n"
+        "- responder: en cuanto el contexto alcance, da la solución paso a paso. NO le "
+        "sugieras pasos que el cliente YA dijo haber hecho — avanza al siguiente paso no "
+        "intentado. SIEMPRE que respondas apoyándote en documentación de Confluence, incluye "
+        "en 'fuentes_usadas' los índices de los fragmentos en que te basaste.\n"
+        "- escalar: si el contexto no tiene la respuesta, si ya intentaste y no converge, o "
+        "si el cliente pide un humano. Antes de escalar debes tener nombre y correo (si no, "
+        "usa 'preguntar' para pedirlos). Al escalar, avisa con calidez que creas un ticket y "
+        "un agente humano lo contactará; incluye 'datos_cliente' y 'resumen_problema'.\n"
+        "\n"
+        "Clasifica la intención (soporte/venta/mixto); en esta fase la venta solo se "
+        "etiqueta, no actúes como vendedor.\n"
+        "\n"
+        "IMPORTANTE — fuentes: el contexto puede incluir tickets internos de soporte. NUNCA "
+        "menciones números de ticket internos ni sugieras que el cliente los consulte; son "
+        "internos. Solo puedes citar documentación pública de Confluence. Usa el "
+        "conocimiento de tickets para responder, pero sin exponerlos.\n"
+        "Nunca inventes lo que no está en el contexto."
     )
 
     chat_msgs = [{"role": "system", "content": system}]

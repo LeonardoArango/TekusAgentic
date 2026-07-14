@@ -100,15 +100,23 @@ class OdooHelpdeskClient:
         records = self._connection.call_with_retry(model.read, record_ids, _FIELDS)
         return [_to_ticket(r) for r in records]
 
-    def crear_ticket(self, asunto: str, descripcion: str, telefono_contacto: str) -> Ticket:
+    def crear_ticket(
+        self,
+        asunto: str,
+        descripcion: str,
+        telefono_contacto: str | None = None,
+        nombre_cliente: str | None = None,
+        correo_cliente: str | None = None,
+    ) -> Ticket:
+        valores: dict = {"name": asunto, "description": descripcion}
+        if telefono_contacto:
+            valores["partner_phone"] = telefono_contacto
+        if nombre_cliente:
+            valores["partner_name"] = nombre_cliente
+        if correo_cliente:
+            valores["partner_email"] = correo_cliente
+
         model = self._connection.env.env[_MODEL]
-        ticket_id = self._connection.call_with_retry(
-            model.create,
-            {
-                "name": asunto,
-                "description": descripcion,
-                "partner_phone": telefono_contacto,
-            },
-        )
+        ticket_id = self._connection.call_with_retry(model.create, valores)
         records = self._connection.call_with_retry(model.read, [ticket_id], _FIELDS)
         return _to_ticket(records[0])
