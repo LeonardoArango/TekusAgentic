@@ -2,7 +2,7 @@
 de staging `knowledge_mining` (minería para autoría de FAQs).
 
 No es parte del RAG de producción — ver
-docs/decisiones/0002-staging-mineria-tickets-odoo.md. El agente
+docs/decisiones/0004-staging-mineria-tickets-odoo.md. El agente
 conversacional nunca lee de aquí.
 """
 

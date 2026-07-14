@@ -1,6 +1,6 @@
 # knowledge_mining/
 
-Staging de minería de tickets de Odoo Helpdesk para autoría humana de FAQs — **no es parte del RAG de producción**. Ver `docs/decisiones/0002-staging-mineria-tickets-odoo.md` para la decisión completa.
+Staging de minería de tickets de Odoo Helpdesk para autoría humana de FAQs — **no es parte del RAG de producción**. Ver `docs/decisiones/0004-staging-mineria-tickets-odoo.md` para la decisión completa.
 
 - Escribe en el schema de Postgres `knowledge_mining` (separado de `backend/models/`, que sí es consultado por el agente/RAG).
 - El agente conversacional en producción **nunca** lee de aquí — sigue consultando Odoo en vivo vía `backend/connectors/odoo_helpdesk/`, tal como exige `CLAUDE.md`.
