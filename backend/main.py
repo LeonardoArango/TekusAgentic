@@ -1,8 +1,10 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.platform.rag_qa import router as platform_rag_qa_router
 from api.platform.router import router as platform_router
@@ -38,6 +40,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Agente WhatsApp Tekus", lifespan=lifespan)
+
+# La plataforma web (Angular) y el backend corren en orígenes distintos incluso
+# en desarrollo local (localhost:4200 vs localhost:8000) — sin esto, el
+# navegador bloquea la llamada por CORS antes de que llegue al SSO/RAG.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.environ.get("FRONTEND_ORIGIN", "http://localhost:4200")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(platform_router)
 app.include_router(platform_rag_qa_router)
 app.include_router(whatsapp_webhook_router)
