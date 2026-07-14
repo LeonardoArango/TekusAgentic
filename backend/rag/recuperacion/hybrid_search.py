@@ -28,14 +28,18 @@ _RRF_K = 60  # constante estándar de RRF (Cormack et al.)
 
 
 def _bm25_candidates(session: Session, query: str, top_k: int) -> list[tuple[str, int]]:
-    """BM25-ish vía full-text search nativo de Postgres (ts_rank_cd)."""
+    """BM25-ish vía full-text search nativo de Postgres (ts_rank_cd).
+
+    Usa la columna `tsv` (generada y persistida por Postgres, indexada con
+    GIN — ver `models/rag.py`) en vez de calcular `to_tsvector(...)` al vuelo:
+    con GIN, esto es un index scan; sin él, sería un sequential scan completo
+    de la tabla en cada búsqueda.
+    """
     rows = session.execute(
         text("""
-            SELECT id,
-                   ts_rank_cd(to_tsvector('spanish', text), plainto_tsquery('spanish', :query))
-                       AS rank
+            SELECT id, ts_rank_cd(tsv, plainto_tsquery('spanish', :query)) AS rank
             FROM confluence_chunks
-            WHERE to_tsvector('spanish', text) @@ plainto_tsquery('spanish', :query)
+            WHERE tsv @@ plainto_tsquery('spanish', :query)
             ORDER BY rank DESC
             LIMIT :top_k
             """),

@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "langgraph>=0.2",
+    "anthropic>=0.40",
     "pywa>=2.6",
     "odoorpc>=0.10",
     "atlassian-python-api>=3.41",

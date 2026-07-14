@@ -13,6 +13,7 @@ import os
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime
 
 from atlassian import Confluence
 from requests.exceptions import RequestException
@@ -93,5 +94,45 @@ class ConfluenceClient:
                     space_key=space_key,
                     url=f"{self._base_url}/wiki/spaces/{space_key}/pages/{page['id']}",
                     body_markdown=page.get("body", {}).get("storage", {}).get("value", ""),
+                )
+            start += page_size
+
+    def iter_space_pages_modified_since(
+        self, space_key: str, since: datetime, page_size: int = 25
+    ) -> Iterator[ConfluencePage]:
+        """Como `iter_space_pages`, pero solo trae páginas modificadas desde
+        `since` (vía CQL) — para sincronizaciones periódicas que no necesitan
+        re-descargar el espacio completo cada vez. No sirve para reconciliar
+        eliminaciones (para eso se necesita un barrido completo periódico con
+        `iter_space_pages`, ver `rag.indexacion.indexer.reconciliar_espacio`).
+        """
+        cql = (
+            f'space = "{space_key}" AND type = page AND '
+            f'lastmodified >= "{since.strftime("%Y-%m-%d %H:%M")}"'
+        )
+        start = 0
+        while True:
+            resultado = self._call_with_retry(
+                self._client.cql,
+                cql,
+                start=start,
+                limit=page_size,
+            )
+            resultados = resultado.get("results", [])
+            if not resultados:
+                return
+            for item in resultados:
+                page_id = item["content"]["id"]
+                pagina_completa = self._call_with_retry(
+                    self._client.get_page_by_id, page_id, expand="body.storage"
+                )
+                yield ConfluencePage(
+                    page_id=page_id,
+                    title=pagina_completa["title"],
+                    space_key=space_key,
+                    url=f"{self._base_url}/wiki/spaces/{space_key}/pages/{page_id}",
+                    body_markdown=pagina_completa.get("body", {})
+                    .get("storage", {})
+                    .get("value", ""),
                 )
             start += page_size
