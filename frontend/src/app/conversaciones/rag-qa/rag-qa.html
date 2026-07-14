@@ -1,45 +1,74 @@
-<div class="rag-qa">
-  <h2>Preguntar a la base de conocimiento</h2>
-  <p class="rag-qa__hint">
-    Respuestas fundamentadas en la wiki de Confluence y en tickets resueltos de Odoo, con su fuente.
-  </p>
+<div class="chat">
+  <div class="chat__head">
+    <div>
+      <h2>Asistente de soporte</h2>
+      <p class="chat__hint">
+        Cuéntame el problema; te haré alguna pregunta si necesito más detalle y te daré la
+        solución con su fuente.
+      </p>
+    </div>
+    @if (turnos().length) {
+      <button type="button" class="chat__reset" (click)="reiniciar()">Nueva conversación</button>
+    }
+  </div>
 
-  <form class="rag-qa-form" (ngSubmit)="preguntar()">
+  <div class="chat__scroll" #scroller>
+    @if (!turnos().length) {
+      <div class="chat__empty">
+        <p>Escribe tu consulta para empezar. Por ejemplo:</p>
+        <ul>
+          <li>“La pantalla del kiosco se ve en negro”</li>
+          <li>“El player dejó de reproducir contenido”</li>
+          <li>“¿Cómo registro un kiosco nuevo en plataforma?”</li>
+        </ul>
+      </div>
+    }
+
+    @for (turno of turnos(); track $index) {
+      <div class="msg" [class.msg--user]="turno.rol === 'user'">
+        <div
+          class="bubble"
+          [class.bubble--user]="turno.rol === 'user'"
+          [class.bubble--ask]="turno.tipo === 'pregunta'"
+          [class.bubble--escalar]="turno.tipo === 'escalar'"
+        >
+          @if (turno.tipo === 'escalar') {
+            <span class="bubble__tag">Escalado a humano</span>
+          }
+          <p class="bubble__text">{{ turno.texto }}</p>
+
+          @if (turno.fuentes?.length) {
+            <ul class="bubble__fuentes">
+              @for (f of turno.fuentes; track f.page_url) {
+                <li>
+                  <a [href]="f.page_url" target="_blank" rel="noopener">{{ f.page_title }}</a>
+                  <span class="bubble__space">{{ f.space_key }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      </div>
+    }
+
+    @if (cargando()) {
+      <div class="msg">
+        <div class="bubble bubble--typing">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    }
+  </div>
+
+  <form class="chat__form" (ngSubmit)="enviar()">
     <input
       type="text"
-      name="pregunta"
-      placeholder="¿Cómo configuro un kiosco?"
-      [(ngModel)]="pregunta"
+      name="borrador"
+      placeholder="Escribe tu mensaje…"
+      autocomplete="off"
+      [(ngModel)]="borrador"
       [disabled]="cargando()"
     />
-    <button type="submit" [disabled]="cargando()">
-      {{ cargando() ? 'Buscando…' : 'Preguntar' }}
-    </button>
+    <button type="submit" [disabled]="cargando() || !borrador.trim()">Enviar</button>
   </form>
-
-  @if (error()) {
-    <p class="rag-qa-error">{{ error() }}</p>
-  }
-
-  @if (resultado(); as r) {
-    @if (r.puede_resolver) {
-      <div class="rag-qa-respuesta">
-        <p>{{ r.respuesta }}</p>
-        @if (r.fuentes.length) {
-          <ul class="rag-qa-fuentes">
-            @for (fuente of r.fuentes; track fuente.page_url) {
-              <li>
-                <a [href]="fuente.page_url" target="_blank" rel="noopener">{{ fuente.page_title }}</a>
-                <span class="rag-qa-espacio">({{ fuente.space_key }})</span>
-              </li>
-            }
-          </ul>
-        }
-      </div>
-    } @else {
-      <p class="rag-qa-sin-resolver">
-        No encontré suficiente información en la base de conocimiento para responder con confianza.
-      </p>
-    }
-  }
 </div>

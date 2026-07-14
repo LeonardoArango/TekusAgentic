@@ -9,10 +9,16 @@ export interface FuenteRag {
   space_key: string;
 }
 
-export interface RespuestaRag {
-  puede_resolver: boolean;
-  respuesta: string;
+export interface MensajeChat {
+  rol: 'user' | 'assistant';
+  texto: string;
+}
+
+export interface ChatResponse {
+  tipo: 'pregunta' | 'respuesta' | 'escalar';
+  texto: string;
   fuentes: FuenteRag[];
+  intencion?: 'soporte' | 'venta' | 'mixto';
 }
 
 /**
@@ -24,9 +30,9 @@ export interface RespuestaRag {
 export class RagQaService {
   private readonly http = inject(HttpClient);
 
-  preguntar(pregunta: string): Observable<RespuestaRag> {
-    return this.http.post<RespuestaRag>(`${environment.apiBaseUrl}/platform/rag/preguntas`, {
-      pregunta,
+  chat(mensajes: MensajeChat[]): Observable<ChatResponse> {
+    return this.http.post<ChatResponse>(`${environment.apiBaseUrl}/platform/rag/chat`, {
+      mensajes,
     });
   }
 }

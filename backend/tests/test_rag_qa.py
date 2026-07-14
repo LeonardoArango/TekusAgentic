@@ -42,6 +42,117 @@ def test_preguntas_sin_contexto_no_llama_al_llm():
         app.dependency_overrides.pop(get_current_user, None)
 
 
+def test_chat_sin_token_devuelve_401():
+    response = client.post(
+        "/api/platform/rag/chat", json={"mensajes": [{"rol": "user", "texto": "hola"}]}
+    )
+    assert response.status_code == 401
+
+
+def test_chat_agente_pide_aclaracion():
+    app.dependency_overrides[get_current_user] = _override_usuario
+    try:
+        with (
+            patch("api.platform.rag_qa._get_engine"),
+            patch("api.platform.rag_qa.Session"),
+            patch("api.platform.rag_qa.hybrid_search", return_value=[{"text": "algo"}]),
+            patch(
+                "api.platform.rag_qa.conversar_rag",
+                return_value={
+                    "accion": "preguntar",
+                    "intencion": "soporte",
+                    "pregunta_aclaratoria": "¿La pantalla está totalmente negra o con rayas?",
+                    "respuesta": "",
+                    "fuentes_usadas": [],
+                },
+            ),
+        ):
+            response = client.post(
+                "/api/platform/rag/chat",
+                json={"mensajes": [{"rol": "user", "texto": "tengo un problema con la pantalla"}]},
+            )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["tipo"] == "pregunta"
+        assert "pantalla" in body["texto"].lower()
+        assert body["fuentes"] == []
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_chat_agente_resuelve_con_fuentes():
+    app.dependency_overrides[get_current_user] = _override_usuario
+    contexto = [
+        {
+            "text": "Reinicia el player manteniendo el botón 5 segundos.",
+            "page_title": "Errores conocidos",
+            "page_url": "https://wiki/x/9",
+            "space_key": "AL",
+        }
+    ]
+    try:
+        with (
+            patch("api.platform.rag_qa._get_engine"),
+            patch("api.platform.rag_qa.Session"),
+            patch("api.platform.rag_qa.hybrid_search", return_value=contexto),
+            patch(
+                "api.platform.rag_qa.conversar_rag",
+                return_value={
+                    "accion": "responder",
+                    "intencion": "soporte",
+                    "pregunta_aclaratoria": "",
+                    "respuesta": "Mantén presionado el botón 5 segundos.",
+                    "fuentes_usadas": [0],
+                },
+            ),
+        ):
+            response = client.post(
+                "/api/platform/rag/chat",
+                json={
+                    "mensajes": [
+                        {"rol": "user", "texto": "la pantalla se ve negra"},
+                        {"rol": "assistant", "texto": "¿totalmente negra?"},
+                        {"rol": "user", "texto": "sí, totalmente"},
+                    ]
+                },
+            )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["tipo"] == "respuesta"
+        assert body["fuentes"][0]["space_key"] == "AL"
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_chat_agente_escala_a_humano():
+    app.dependency_overrides[get_current_user] = _override_usuario
+    try:
+        with (
+            patch("api.platform.rag_qa._get_engine"),
+            patch("api.platform.rag_qa.Session"),
+            patch("api.platform.rag_qa.hybrid_search", return_value=[]),
+            patch(
+                "api.platform.rag_qa.conversar_rag",
+                return_value={
+                    "accion": "escalar",
+                    "intencion": "soporte",
+                    "respuesta": "Te paso con un agente humano.",
+                    "motivo_escalamiento": "sin_respuesta",
+                },
+            ),
+        ):
+            response = client.post(
+                "/api/platform/rag/chat",
+                json={"mensajes": [{"rol": "user", "texto": "quiero hablar con una persona"}]},
+            )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["tipo"] == "escalar"
+        assert body["fuentes"] == []
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
 def test_preguntas_con_contexto_devuelve_respuesta_y_fuentes():
     app.dependency_overrides[get_current_user] = _override_usuario
     contexto = [
