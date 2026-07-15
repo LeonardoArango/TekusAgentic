@@ -108,6 +108,23 @@ def reportar_ticket_existente(estado: DialogueState, resumen_ticket: str) -> str
     )
 
 
+def confirmar_ticket_creado(estado: DialogueState, ticket_ref: str | None) -> str:
+    if ticket_ref:
+        instr = (
+            f"Acabas de registrar el caso del cliente con el número {ticket_ref}. "
+            "Confírmaselo con calidez en una o dos frases, reconociendo el problema, y dile "
+            "que mientras un agente de Tekus lo toma vas a intentar ayudarlo tú de una vez. "
+            "Invítalo a darte un detalle más del problema o a probar lo que le sugieras."
+        )
+    else:
+        instr = (
+            "Registraste el caso del cliente internamente (NO menciones ningún número). "
+            "Confírmaselo con calidez, reconoce el problema y dile que mientras un agente de "
+            "Tekus lo toma vas a intentar ayudarlo tú de una vez."
+        )
+    return _generar(estado, instr)
+
+
 def responder_meta(estado: DialogueState) -> str:
     return _generar(
         estado,

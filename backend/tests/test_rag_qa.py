@@ -110,7 +110,8 @@ def test_resolver_filtra_fuentes_internas():
                     "sentimiento": "neutral",
                     "intencion": "soporte",
                     "problema": "la pantalla no muestra imagen",
-                    "reporto_antes": "no",
+                    # ya tiene ticket previo -> no se abre caso, va al ramo problema
+                    "reporto_antes": "si",
                     # cliente ya identificado en un turno (para llegar al ramo problema)
                     "datos": {
                         "nombre": "Leo",
@@ -201,6 +202,51 @@ def test_pedir_humano_con_datos_crea_ticket():
         assert body["tipo"] == "escalar" and body["ticket_ref"] == "9001"
         crear.assert_called_once()
         # la sede se pasa al creador de ticket
+        assert (
+            crear.call_args.args[3] == "CC Cacique"
+            or crear.call_args.kwargs.get("sede") == "CC Cacique"
+        )
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+# --- sin ticket previo: se abre el caso en Odoo (no solo al escalar) --------
+
+
+def test_sin_ticket_previo_abre_caso_en_odoo():
+    app.dependency_overrides[get_current_user] = _override_usuario
+    try:
+        with (
+            _memoria_en_memoria(),
+            patch("api.platform.rag_qa.hybrid_search", return_value=[]),
+            patch(
+                "agents.soporte_web.grafo.nlu.entender",
+                return_value={
+                    "acto": "responder_pregunta",
+                    "sentimiento": "neutral",
+                    "intencion": "soporte",
+                    "problema": "la pantalla no muestra imagen",
+                    "reporto_antes": "no",
+                    "datos": {
+                        "nombre": "Leonardo",
+                        "cuenta": "Casa Ferretera",
+                        "sede": "CC Cacique",
+                        "correo": "leo@x.com",
+                    },
+                },
+            ),
+            patch(
+                "agents.soporte_web.grafo.nlg.confirmar_ticket_creado",
+                return_value="Listo, registré tu caso #7001; mientras un agente lo toma...",
+            ),
+            patch("api.platform.rag_qa._crear_ticket", return_value="7001") as crear,
+        ):
+            r = _post("no, no lo había reportado antes")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ticket_ref"] == "7001"
+        crear.assert_called_once()
+        # la sede se pasa al creador de ticket (para la visita del técnico)
         assert (
             crear.call_args.args[3] == "CC Cacique"
             or crear.call_args.kwargs.get("sede") == "CC Cacique"

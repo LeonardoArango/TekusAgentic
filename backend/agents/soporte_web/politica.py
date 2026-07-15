@@ -59,6 +59,13 @@ def ruta(estado, acto: str) -> str:
     if not estado.reporto_antes:
         return "ticket_check"
 
+    # Ya preguntamos. Si NO lo había reportado (o no dio número), abrimos el
+    # caso ahora mismo — con los datos ya identificados — antes de seguir
+    # ayudando. Si SÍ tiene un ticket previo, el lookup en Odoo es la tarea #7:
+    # por ahora no duplicamos, seguimos ayudando sobre su caso existente.
+    if estado.reporto_antes in ("no", "preguntado") and not estado.ticket_ref:
+        return "abrir_ticket"
+
     if acto in ACTOS_PROBLEMA or acto == "dar_datos_contacto":
         return "problema"
     return "social"

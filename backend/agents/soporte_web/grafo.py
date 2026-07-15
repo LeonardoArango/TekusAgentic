@@ -137,6 +137,23 @@ def _n_ticket_check(gs: GS) -> GS:
     return {"tipo": "pregunta", "texto": nlg.preguntar_ticket_previo(est)}
 
 
+def _nodo_abrir_ticket(crear_ticket: CreadorTicket):
+    """Abre el caso en Odoo cuando el cliente ya está identificado y confirma
+    que no lo había reportado antes (playbook: si no hay ticket previo, lo
+    registramos nosotros). El diagnóstico/ayuda continúa en los turnos
+    siguientes, ya con el caso abierto."""
+
+    def nodo(gs: GS) -> GS:
+        est = gs["estado"]
+        resumen = est.problema or "Consulta de soporte"
+        ref = crear_ticket(est.slots.nombre, est.slots.correo, resumen, est.slots.sede)
+        est.ticket_ref = ref
+        est.fase = Fase.DIAGNOSTICO
+        return {"tipo": "respuesta", "texto": nlg.confirmar_ticket_creado(est, ref)}
+
+    return nodo
+
+
 def _n_meta(gs: GS) -> GS:
     return {"tipo": "pregunta", "texto": nlg.responder_meta(gs["estado"])}
 
@@ -211,6 +228,7 @@ def construir_grafo(buscar: BuscadorHibrido, crear_ticket: CreadorTicket):
     g.add_node("decidir_problema", _decidir_problema)
     g.add_node("identificar", _n_identificar)
     g.add_node("ticket_check", _n_ticket_check)
+    g.add_node("abrir_ticket", _nodo_abrir_ticket(crear_ticket))
     g.add_node("meta", _n_meta)
     g.add_node("objecion", _n_objecion)
     g.add_node("social", _n_social)
@@ -231,6 +249,7 @@ def construir_grafo(buscar: BuscadorHibrido, crear_ticket: CreadorTicket):
             "social": "social",
             "identificar": "identificar",
             "ticket_check": "ticket_check",
+            "abrir_ticket": "abrir_ticket",
             "problema": "decidir_problema",
             "contacto": "escalar",
             "escalar": "escalar",
@@ -248,6 +267,7 @@ def construir_grafo(buscar: BuscadorHibrido, crear_ticket: CreadorTicket):
         "social",
         "identificar",
         "ticket_check",
+        "abrir_ticket",
         "aclarar",
         "resolver",
         "escalar",
