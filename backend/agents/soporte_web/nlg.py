@@ -15,17 +15,17 @@ from agents.soporte_web.estado import DialogueState
 
 
 def _nombre_agente() -> str:
-    return os.environ.get("AGENTE_NOMBRE", "Kai, asistente virtual de Tekus")
+    return os.environ.get("AGENTE_NOMBRE", "Eva")
 
 
 def _persona() -> str:
     return (
-        f"Eres {_nombre_agente()}, el asistente de soporte de Tekus (pantallas digitales, "
-        "kioscos y players). Hablas español, tono cálido y cercano de tú, natural y humano, "
-        "sin sonar a robot ni a formulario. Frases cortas. Sin emojis. Si te preguntan si "
-        "eres una persona, respóndelo con honestidad: eres un asistente virtual, y ofrece "
-        "pasar a un agente humano. Nunca inventes información ni menciones números de "
-        "tickets internos de la empresa."
+        f"Eres {_nombre_agente()}, la asistente de soporte de Tekus (señalización digital, "
+        "kioscos de autoservicio, vestier digital, medición de audiencia). Hablas español, "
+        "tono cálido y cercano de tú, natural y humano, sin sonar a robot ni a formulario. "
+        "Frases cortas. Sin emojis. Si te preguntan si eres una persona, respóndelo con "
+        "honestidad: eres una asistente virtual, y ofrece pasar a un agente humano. Nunca "
+        "inventes información ni menciones números de tickets internos de la empresa."
     )
 
 
@@ -61,6 +61,51 @@ def _generar(estado: DialogueState, instruccion: str) -> str:
 
 
 # --- Nodos de generación (uno por acción de la política) --------------------
+
+
+def identificar(estado: DialogueState, faltan: list[str], es_primer_turno: bool) -> str:
+    saludo = ""
+    if es_primer_turno:
+        nombre = estado.slots.nombre.strip()
+        quien = f" {nombre}" if nombre else ""
+        problema = estado.problema.strip()
+        sobre = f"solucionar {problema}" if problema else "ayudarte con tu requerimiento"
+        saludo = (
+            f"Preséntate SOLO en este primer mensaje así (adaptando naturalmente): "
+            f"'Hola{quien}, soy {_nombre_agente()} de Tekus y voy a hacer todo lo posible por "
+            f"{sobre}.' "
+        )
+    faltan_txt = ", ".join(faltan) if faltan else ""
+    instr = (
+        saludo
+        + "Confirma en una frase lo que entendiste del cliente (empresa, sede, problema) si lo "
+        "tienes. "
+        + (
+            f"Luego pide, de forma natural y en un mismo mensaje, lo que aún falta: {faltan_txt}. "
+            "Pide máximo 2-3 datos a la vez, sin sonar a formulario."
+            if faltan
+            else "Ya tienes los datos necesarios; dile que con eso es suficiente para continuar."
+        )
+    )
+    return _generar(estado, instr)
+
+
+def preguntar_ticket_previo(estado: DialogueState) -> str:
+    return _generar(
+        estado,
+        "Pregúntale con naturalidad si ya había reportado este caso antes (si ya tiene un "
+        "ticket abierto). Si es así, pídele el número de ticket; si no, dile que no hay "
+        "problema, que lo puedes registrar tú.",
+    )
+
+
+def reportar_ticket_existente(estado: DialogueState, resumen_ticket: str) -> str:
+    return _generar(
+        estado,
+        "Cuéntale al cliente el estado de su ticket existente con estos datos (no inventes "
+        f"nada fuera de esto): {resumen_ticket}. Sé claro y humano, y dile que vas a "
+        "revisarlo.",
+    )
 
 
 def responder_meta(estado: DialogueState) -> str:

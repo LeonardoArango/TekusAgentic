@@ -64,6 +64,10 @@ def _actualizar(estado_gs: GS) -> GS:
     est.sentimiento = n.get("sentimiento", est.sentimiento)
     if n.get("problema"):
         est.problema = n["problema"]
+    if n.get("producto") and not est.producto:
+        est.producto = n["producto"]
+    if n.get("reporto_antes"):
+        est.reporto_antes = n["reporto_antes"]
     for s in n.get("sintomas_nuevos", []):
         if s and s not in est.sintomas:
             est.sintomas.append(s)
@@ -91,7 +95,7 @@ def _nodo_recuperar(buscar: BuscadorHibrido):
 
 
 def _ruta(estado_gs: GS) -> str:
-    return politica.ruta_principal(estado_gs["nlu"].get("acto", "otro"))
+    return politica.ruta(estado_gs["estado"], estado_gs["nlu"].get("acto", "otro"))
 
 
 def _decidir_problema(estado_gs: GS) -> GS:
@@ -111,6 +115,26 @@ def _ruta_problema(estado_gs: GS) -> str:
 
 
 # generación
+
+
+def _n_identificar(gs: GS) -> GS:
+    est = gs["estado"]
+    faltan = politica.datos_identificacion_faltantes(est)
+    es_primero = est.fase == Fase.SALUDO
+    texto = nlg.identificar(est, faltan, es_primero)
+    est.fase = Fase.IDENTIFICACION
+    est.preguntas_hechas.append("identificar:" + ",".join(faltan))
+    return {"tipo": "pregunta", "texto": texto}
+
+
+def _n_ticket_check(gs: GS) -> GS:
+    est = gs["estado"]
+    est.fase = Fase.TICKET_CHECK
+    # Marcamos que ya preguntamos; la respuesta del cliente (si/no + nº) la
+    # capturará el NLU en el próximo turno. El lookup real del ticket en Odoo
+    # es el siguiente incremento (tarea #7).
+    est.reporto_antes = est.reporto_antes or "preguntado"
+    return {"tipo": "pregunta", "texto": nlg.preguntar_ticket_previo(est)}
 
 
 def _n_meta(gs: GS) -> GS:
@@ -185,6 +209,8 @@ def construir_grafo(buscar: BuscadorHibrido, crear_ticket: CreadorTicket):
     g.add_node("actualizar", _actualizar)
     g.add_node("recuperar", _nodo_recuperar(buscar))
     g.add_node("decidir_problema", _decidir_problema)
+    g.add_node("identificar", _n_identificar)
+    g.add_node("ticket_check", _n_ticket_check)
     g.add_node("meta", _n_meta)
     g.add_node("objecion", _n_objecion)
     g.add_node("social", _n_social)
@@ -203,6 +229,8 @@ def construir_grafo(buscar: BuscadorHibrido, crear_ticket: CreadorTicket):
             "meta": "meta",
             "objecion": "objecion",
             "social": "social",
+            "identificar": "identificar",
+            "ticket_check": "ticket_check",
             "problema": "decidir_problema",
             "contacto": "escalar",
             "escalar": "escalar",
@@ -214,7 +242,17 @@ def construir_grafo(buscar: BuscadorHibrido, crear_ticket: CreadorTicket):
         _ruta_problema,
         {"resolver": "resolver", "aclarar": "aclarar", "escalar": "escalar"},
     )
-    for terminal in ("meta", "objecion", "social", "aclarar", "resolver", "escalar", "cerrar"):
+    for terminal in (
+        "meta",
+        "objecion",
+        "social",
+        "identificar",
+        "ticket_check",
+        "aclarar",
+        "resolver",
+        "escalar",
+        "cerrar",
+    ):
         g.add_edge(terminal, END)
     return g.compile()
 

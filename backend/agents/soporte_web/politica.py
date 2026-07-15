@@ -12,23 +12,56 @@ from agents.soporte_web.estado import DialogueState
 
 ACTOS_PROBLEMA = {"reportar_problema", "dar_detalle", "responder_pregunta"}
 
-# Datos mínimos para crear el caso; la sede es muy deseable (visita en sitio)
-# pero no bloquea la creación del ticket.
-DATOS_REQUERIDOS = ["nombre", "correo"]
+# El cliente pide algo que se atiende SIEMPRE de inmediato, sin importar la
+# fase (para no ignorarlo ni sonar a robot).
+ACTOS_INMEDIATOS = {
+    "meta_pregunta": "meta",
+    "objecion_frustracion": "objecion",
+    "pedir_humano": "escalar",
+    "despedida": "cerrar",
+}
+
+# Playbook de Leonardo: identificar al cliente ANTES de diagnosticar.
+# Mínimo para continuar: persona, empresa, sede, correo y el problema.
+DATOS_IDENTIFICACION = ["nombre", "cuenta", "sede", "correo"]  # + problema (no es slot)
+DATOS_REQUERIDOS = ["nombre", "correo"]  # mínimo duro para crear el ticket
 MAX_INTENTOS_POR_DATO = 2
 
 
-def ruta_principal(acto: str) -> str:
-    """Ruta de alto nivel según el acto del último mensaje."""
-    return {
-        "meta_pregunta": "meta",
-        "objecion_frustracion": "objecion",
-        "smalltalk_saludo": "social",
-        "pedir_humano": "escalar",
-        "dar_datos_contacto": "contacto",
-        "despedida": "cerrar",
-        "fuera_de_tema": "social",
-    }.get(acto, "problema" if acto in ACTOS_PROBLEMA else "social")
+def datos_identificacion_faltantes(estado) -> list[str]:
+    """Qué falta para dar por identificado al cliente (playbook, paso 3)."""
+    faltan = []
+    etiquetas = {
+        "nombre": "tu nombre",
+        "cuenta": "la empresa",
+        "sede": "la sede o punto",
+        "correo": "tu correo",
+    }
+    for campo in DATOS_IDENTIFICACION:
+        if not getattr(estado.slots, campo).strip():
+            faltan.append(etiquetas[campo])
+    if not estado.problema.strip():
+        faltan.append("qué problema presenta el equipo")
+    return faltan
+
+
+def ruta(estado, acto: str) -> str:
+    """Ruta de alto nivel: atiende lo inmediato; si no, sigue el playbook por
+    fase (identificar → revisar ticket → diagnosticar)."""
+    if acto in ACTOS_INMEDIATOS:
+        return ACTOS_INMEDIATOS[acto]
+
+    # Identificar primero.
+    if datos_identificacion_faltantes(estado):
+        return "identificar"
+
+    # ¿Ya revisamos si tenía ticket previo? (se pregunta una vez)
+    if not estado.reporto_antes:
+        return "ticket_check"
+
+    if acto in ACTOS_PROBLEMA or acto == "dar_datos_contacto":
+        return "problema"
+    return "social"
 
 
 def datos_faltantes(estado: DialogueState) -> list[str]:

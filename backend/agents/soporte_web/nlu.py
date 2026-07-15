@@ -48,6 +48,20 @@ _TOOL = {
                         "Vacío si este turno no habla del problema."
                     ),
                 },
+                "producto": {
+                    "type": "string",
+                    "enum": ["", "senalizacion_digital", "kiosco", "vestier", "medicion", "otro"],
+                    "description": "Producto Tekus involucrado si se puede inferir; vacío si no.",
+                },
+                "reporto_antes": {
+                    "type": "string",
+                    "enum": ["", "si", "no"],
+                    "description": "'si' si ya lo reportó antes; 'no' si no; '' si no se sabe.",
+                },
+                "numero_ticket": {
+                    "type": "string",
+                    "description": "Número de ticket que mencione el cliente; vacío si no.",
+                },
                 "sintomas_nuevos": {"type": "array", "items": {"type": "string"}},
                 "pasos_intentados_nuevos": {
                     "type": "array",

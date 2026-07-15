@@ -15,6 +15,8 @@ from enum import StrEnum
 
 class Fase(StrEnum):
     SALUDO = "saludo"
+    IDENTIFICACION = "identificacion"  # reunir empresa/sede/persona/correo/problema
+    TICKET_CHECK = "ticket_check"  # ¿ya reportado? revisar ticket existente
     DIAGNOSTICO = "diagnostico"
     RECOLECCION_DATOS = "recoleccion_datos"
     ESCALADO = "escalado"
@@ -51,8 +53,10 @@ class DialogueState:
 
     # Problema
     problema: str = ""  # descripción canónica, en tercera persona
+    producto: str = ""  # señalización_digital | kiosco | vestier | medición | otro
     sintomas: list[str] = field(default_factory=list)
     pasos_intentados: list[str] = field(default_factory=list)
+    reporto_antes: str = ""  # "" (sin preguntar) | "no" | "si"
 
     # Anti-repetición: qué ya dijimos/preguntamos
     preguntas_hechas: list[str] = field(default_factory=list)
@@ -101,8 +105,10 @@ class DialogueState:
             fase=Fase(data.get("fase", Fase.SALUDO.value)),
             slots=slots,
             problema=data.get("problema", ""),
+            producto=data.get("producto", ""),
             sintomas=list(data.get("sintomas", [])),
             pasos_intentados=list(data.get("pasos_intentados", [])),
+            reporto_antes=data.get("reporto_antes", ""),
             preguntas_hechas=list(data.get("preguntas_hechas", [])),
             pasos_sugeridos=list(data.get("pasos_sugeridos", [])),
             intentos_por_dato=dict(data.get("intentos_por_dato", {})),

@@ -110,6 +110,14 @@ def test_resolver_filtra_fuentes_internas():
                     "sentimiento": "neutral",
                     "intencion": "soporte",
                     "problema": "la pantalla no muestra imagen",
+                    "reporto_antes": "no",
+                    # cliente ya identificado en un turno (para llegar al ramo problema)
+                    "datos": {
+                        "nombre": "Leo",
+                        "cuenta": "Tienda X",
+                        "sede": "CC Cacique",
+                        "correo": "leo@x.com",
+                    },
                 },
             ),
             patch(
